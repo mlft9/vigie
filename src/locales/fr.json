@@ -49,8 +49,49 @@
   },
   "errors": {
     "unknown": "Une erreur inattendue est survenue.",
+    "internal": "Erreur interne de l'application. Consultez le journal pour plus de détails.",
     "ipc": {
       "command_denied": "Action refusée par l'application."
+    },
+    "dialog": {
+      "failed": "La fenêtre de sélection de fichier n'a pas pu s'ouvrir."
+    },
+    "url": {
+      "invalid": "Ce lien n'est pas autorisé : seuls les liens http et https peuvent être ouverts.",
+      "open_failed": "Le navigateur n'a pas pu être lancé."
+    },
+    "ssh": {
+      "invalid_host": "Adresse d'hôte invalide. Indiquez un nom d'hôte ou une adresse IP.",
+      "invalid_port": "Le port doit être compris entre 1 et 65535.",
+      "invalid_username": "Nom d'utilisateur invalide.",
+      "invalid_secret": "Le mot de passe ou la passphrase est vide ou trop long.",
+      "invalid_terminal_size": "Taille de terminal invalide.",
+      "invalid_input": "Saisie invalide.",
+      "input_too_large": "Texte trop volumineux pour être envoyé en une fois.",
+      "key_read_failed": "Impossible de lire le fichier de clé. Vérifiez qu'il existe et qu'il est accessible.",
+      "key_too_large": "Ce fichier est trop volumineux pour être une clé privée.",
+      "key_passphrase_required": "Cette clé est protégée : saisissez sa passphrase.",
+      "key_wrong_passphrase": "Passphrase incorrecte pour cette clé.",
+      "key_invalid": "Ce fichier n'est pas une clé privée reconnue (OpenSSH, PEM ou PuTTY).",
+      "key_file_unknown": "Fichier de clé inconnu : sélectionnez-le à nouveau.",
+      "dns_failed": "Hôte introuvable. Vérifiez l'adresse ou votre résolution DNS.",
+      "connection_refused": "Connexion refusée : aucun serveur SSH n'écoute sur ce port.",
+      "timeout": "Le serveur ne répond pas (délai dépassé).",
+      "connect_failed": "Connexion impossible. Vérifiez le réseau et l'adresse.",
+      "handshake_failed": "La négociation SSH a échoué (aucun algorithme sûr en commun ou connexion interrompue).",
+      "host_key_rejected": "Clé d'hôte refusée : connexion annulée.",
+      "host_key_changed": "Connexion bloquée : la clé de l'hôte a changé.",
+      "host_key_revoked": "Connexion bloquée : la clé de cet hôte est révoquée.",
+      "host_key_timeout": "Aucune décision sur la clé d'hôte : connexion annulée.",
+      "known_hosts_io": "Le fichier des clés d'hôte connues est illisible ou ne peut pas être écrit.",
+      "no_pending_decision": "Aucune clé d'hôte n'attend de décision.",
+      "auth_failed": "Authentification refusée. Vérifiez l'utilisateur et le mot de passe ou la clé.",
+      "channel_failed": "Le serveur a refusé d'ouvrir un terminal.",
+      "connection_lost": "Connexion perdue.",
+      "session_ended": "Session terminée.",
+      "session_closed": "Session fermée.",
+      "session_not_found": "Cette session n'existe plus.",
+      "too_many_sessions": "Trop de sessions ouvertes. Fermez-en avant d'en ouvrir une nouvelle."
     }
   }
 }

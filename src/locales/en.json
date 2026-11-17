@@ -49,8 +49,49 @@
   },
   "errors": {
     "unknown": "An unexpected error occurred.",
+    "internal": "Internal application error. See the log for details.",
     "ipc": {
-      "command_denied": "Action refused by the application."
+      "command_denied": "Action denied by the application."
+    },
+    "dialog": {
+      "failed": "The file picker could not be opened."
+    },
+    "url": {
+      "invalid": "This link is not allowed: only http and https links can be opened.",
+      "open_failed": "The browser could not be launched."
+    },
+    "ssh": {
+      "invalid_host": "Invalid host address. Enter a host name or an IP address.",
+      "invalid_port": "The port must be between 1 and 65535.",
+      "invalid_username": "Invalid user name.",
+      "invalid_secret": "The password or passphrase is empty or too long.",
+      "invalid_terminal_size": "Invalid terminal size.",
+      "invalid_input": "Invalid input.",
+      "input_too_large": "Text too large to be sent at once.",
+      "key_read_failed": "Unable to read the key file. Check that it exists and is accessible.",
+      "key_too_large": "This file is too large to be a private key.",
+      "key_passphrase_required": "This key is protected: enter its passphrase.",
+      "key_wrong_passphrase": "Wrong passphrase for this key.",
+      "key_invalid": "This file is not a recognized private key (OpenSSH, PEM or PuTTY).",
+      "key_file_unknown": "Unknown key file: select it again.",
+      "dns_failed": "Host not found. Check the address or your DNS resolution.",
+      "connection_refused": "Connection refused: no SSH server is listening on this port.",
+      "timeout": "The server is not responding (timed out).",
+      "connect_failed": "Unable to connect. Check the network and the address.",
+      "handshake_failed": "SSH negotiation failed (no secure algorithm in common or connection interrupted).",
+      "host_key_rejected": "Host key rejected: connection cancelled.",
+      "host_key_changed": "Connection blocked: the host key has changed.",
+      "host_key_revoked": "Connection blocked: this host's key is revoked.",
+      "host_key_timeout": "No decision on the host key: connection cancelled.",
+      "known_hosts_io": "The known host keys file cannot be read or written.",
+      "no_pending_decision": "No host key is awaiting a decision.",
+      "auth_failed": "Authentication denied. Check the user name and the password or key.",
+      "channel_failed": "The server refused to open a terminal.",
+      "connection_lost": "Connection lost.",
+      "session_ended": "Session ended.",
+      "session_closed": "Session closed.",
+      "session_not_found": "This session no longer exists.",
+      "too_many_sessions": "Too many open sessions. Close some before opening a new one."
     }
   }
 }

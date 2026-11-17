@@ -155,7 +155,17 @@ describe('capabilities', () => {
   it('correspondent exactement à la liste attendue (tout ajout se fait délibérément ici)', () => {
     // Liste blanche exacte : une permission ajoutée dans une capability fait échouer ce test
     // tant qu'elle n'est pas ajoutée ici, après revue de sécurité.
-    const EXPECTED_PERMISSIONS = ['allow-app-info'];
+    const EXPECTED_PERMISSIONS = [
+      'allow-app-info',
+      'allow-ssh-connect',
+      'allow-ssh-write',
+      'allow-ssh-resize',
+      'allow-ssh-ack',
+      'allow-ssh-host-key-decision',
+      'allow-ssh-close',
+      'allow-ssh-pick-key-file',
+      'allow-open-external-url',
+    ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ssh-ack"
+description = "Enables the ssh_ack command without any pre-configured scope."
+commands.allow = ["ssh_ack"]
+
+[[permission]]
+identifier = "deny-ssh-ack"
+description = "Denies the ssh_ack command without any pre-configured scope."
+commands.deny = ["ssh_ack"]

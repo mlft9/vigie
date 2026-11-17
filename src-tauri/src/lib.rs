@@ -5,9 +5,12 @@ mod commands;
 mod error;
 mod logging;
 mod navigation;
+mod state;
 
 use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+use crate::state::SessionManager;
 
 /// Nom de l'application côté Rust (ADR-014). Seule autre source : `productName` dans
 /// `tauri.conf.json` et la clé i18n `app.name`.
@@ -15,10 +18,15 @@ pub const APP_NAME: &str = "Younji";
 
 /// Étiquette de la fenêtre principale ; elle doit correspondre à `capabilities/main.json`.
 const MAIN_WINDOW: &str = "main";
+/// Fichier des clés d'hôte acceptées, dans le dossier de données (HKY-03).
+const KNOWN_HOSTS_FILE: &str = "known_hosts";
 
 /// Démarre l'application.
 pub fn run() {
     let result = tauri::Builder::default()
+        // Plugin utilisé uniquement depuis Rust (sélection d'une clé privée) : aucune de ses
+        // permissions n'est accordée à l'interface.
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Sans dossier de journaux connu, on se replie sur la console : jamais sur un
             // dossier temporaire partagé, dont le nom serait prévisible pour un autre utilisateur.
@@ -28,6 +36,9 @@ pub fn run() {
                 version = env!("CARGO_PKG_VERSION"),
                 "démarrage de {APP_NAME}"
             );
+
+            let data_dir = app.path().app_data_dir()?;
+            app.manage(SessionManager::new(data_dir.join(KNOWN_HOSTS_FILE)));
 
             // Le serveur Vite n'est autorisé qu'en développement.
             let dev_url = if cfg!(dev) {
@@ -60,7 +71,17 @@ pub fn run() {
                 .build()?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::app::app_info])
+        .invoke_handler(tauri::generate_handler![
+            commands::app::app_info,
+            commands::ssh::ssh_connect,
+            commands::ssh::ssh_write,
+            commands::ssh::ssh_resize,
+            commands::ssh::ssh_ack,
+            commands::ssh::ssh_host_key_decision,
+            commands::ssh::ssh_close,
+            commands::ssh::ssh_pick_key_file,
+            commands::url::open_external_url,
+        ])
         .run(tauri::generate_context!());
 
     if let Err(error) = result {
