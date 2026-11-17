@@ -1,0 +1,56 @@
+{
+  "app": {
+    "name": "Vigie",
+    "tagline": "Client SSH, SFTP et RDP"
+  },
+  "nav": {
+    "label": "Navigation principale",
+    "hosts": "Hôtes",
+    "keys": "Clés",
+    "snippets": "Snippets",
+    "tunnels": "Tunnels",
+    "sftp": "SFTP",
+    "settings": "Paramètres"
+  },
+  "tabs": {
+    "label": "Onglets",
+    "home": "Accueil"
+  },
+  "sections": {
+    "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
+    "hosts": "Votre carnet d'hôtes apparaîtra ici.",
+    "keys": "Vos clés SSH et identités apparaîtront ici.",
+    "snippets": "Vos commandes réutilisables apparaîtront ici.",
+    "tunnels": "Vos tunnels SSH apparaîtront ici.",
+    "sftp": "L'explorateur de fichiers distant apparaîtra ici."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "appearance": "Apparence",
+    "language": {
+      "label": "Langue",
+      "description": "Par défaut, Vigie suit la langue du système.",
+      "system": "Langue du système",
+      "fr": "Français",
+      "en": "English"
+    },
+    "theme": {
+      "label": "Thème",
+      "description": "Par défaut, Vigie suit le thème du système.",
+      "system": "Thème du système",
+      "light": "Clair",
+      "dark": "Sombre"
+    },
+    "about": {
+      "title": "À propos",
+      "version": "Version",
+      "unavailable": "indisponible"
+    }
+  },
+  "errors": {
+    "unknown": "Une erreur inattendue est survenue.",
+    "ipc": {
+      "command_denied": "Action refusée par l'application."
+    }
+  }
+}

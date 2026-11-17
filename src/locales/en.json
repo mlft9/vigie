@@ -1,0 +1,56 @@
+{
+  "app": {
+    "name": "Vigie",
+    "tagline": "SSH, SFTP and RDP client"
+  },
+  "nav": {
+    "label": "Main navigation",
+    "hosts": "Hosts",
+    "keys": "Keys",
+    "snippets": "Snippets",
+    "tunnels": "Tunnels",
+    "sftp": "SFTP",
+    "settings": "Settings"
+  },
+  "tabs": {
+    "label": "Tabs",
+    "home": "Home"
+  },
+  "sections": {
+    "comingSoon": "This section will arrive in step {{step}} of the roadmap.",
+    "hosts": "Your host book will appear here.",
+    "keys": "Your SSH keys and identities will appear here.",
+    "snippets": "Your reusable commands will appear here.",
+    "tunnels": "Your SSH tunnels will appear here.",
+    "sftp": "The remote file browser will appear here."
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": "Appearance",
+    "language": {
+      "label": "Language",
+      "description": "By default, Vigie follows the system language.",
+      "system": "System language",
+      "fr": "Français",
+      "en": "English"
+    },
+    "theme": {
+      "label": "Theme",
+      "description": "By default, Vigie follows the system theme.",
+      "system": "System theme",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "about": {
+      "title": "About",
+      "version": "Version",
+      "unavailable": "unavailable"
+    }
+  },
+  "errors": {
+    "unknown": "An unexpected error occurred.",
+    "ipc": {
+      "command_denied": "Action refused by the application."
+    }
+  }
+}
