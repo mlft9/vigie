@@ -201,7 +201,9 @@ Contenu : crate `core-rdp`, rendu dans un onglet (canvas, envoi de régions modi
 ---
 
 ## Étape 13 — Finitions et publication
-Contenu : version portable (APP-06), mises à jour signées (APP-07, clés dans les secrets GitHub), README illustré (captures, GIF), `ARCHITECTURE.md` finalisé, `LICENSE` GPL-3.0, `SECURITY.md` (politique de signalement), passage du dépôt en public, demande de signature à la SignPath Foundation, vérification que le nom « Vigie » n'est pas une marque déposée dans le domaine logiciel (INPI, EUIPO) avant la publication.
+> Avancés à la fin de l'étape 0 (ADR-016) : `LICENSE` GPL-3.0, `SECURITY.md` et passage du dépôt en public.
+
+Contenu : version portable (APP-06), mises à jour signées (APP-07, clés dans les secrets GitHub), README illustré (captures, GIF), `ARCHITECTURE.md` finalisé, demande de signature à la SignPath Foundation, vérification que le nom « Vigie » n'est pas une marque déposée dans le domaine logiciel (INPI, EUIPO) avant la publication.
 
 **Critères d'acceptation**
 - [ ] La version portable fonctionne depuis une clé USB, sans rien écrire dans le profil utilisateur.

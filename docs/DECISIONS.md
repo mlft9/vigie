@@ -12,7 +12,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 005 | Schéma cryptographique du coffre | Acceptée |
 | 006 | Clés d'hôte : TOFU strict | Acceptée |
 | 007 | RDP en deux temps | Acceptée |
-| 008 | Dépôt GitHub privé et stratégie CI | Acceptée |
+| 008 | Dépôt GitHub privé et stratégie CI | Partiellement remplacée par ADR-016 (visibilité) |
 | 009 | Licence GPL-3.0 | Acceptée |
 | 010 | Nom de code « Relais » et centralisation du nom | Remplacée par ADR-014 |
 | 011 | Pas de synchronisation, export/import chiffré uniquement | Acceptée |
@@ -20,6 +20,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 013 | Développement assisté par Claude Code | Acceptée |
 | 014 | Nom définitif : Vigie | Acceptée |
 | 015 | Modèle d'isolation Tauri et commandes soumises aux capabilities | Acceptée |
+| 016 | Dépôt public dès l'étape 0 | Acceptée |
 
 ---
 
@@ -77,7 +78,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 **Conséquences** : RDP utilisable tôt ; le plus gros risque technique est repoussé en fin de parcours, sans bloquer le reste.
 
 ## ADR-008 — Dépôt GitHub privé et stratégie CI
-**Statut** : Acceptée (17/11/2026)
+**Statut** : Acceptée (17/11/2026). Visibilité du dépôt remplacée par ADR-016 ; la stratégie CI reste valable.
 **Contexte** : le dépôt reste privé au début. Les minutes GitHub Actions sont limitées et les runners Windows comptent double.
 **Décision** : `ci.yml` sous Linux à chaque push ; `build.yml` (Windows + Linux) en manuel ou sur tag. Passage en public à l'étape 13. Gitea abandonné, car le Gitea du porteur n'est pas joignable depuis les environnements cloud.
 **Conséquences** : coûts maîtrisés ; les installeurs se demandent explicitement quand il y a une version à tester.
@@ -134,3 +135,21 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - La balise `<style>` que Tauri injecte pour masquer l'iframe d'isolation est bloquée par notre CSP (`style-src 'self'`). L'iframe est masquée depuis `src/index.css`, sans assouplir la CSP. Deux avertissements CSP apparaissent dans la console : ils sont attendus.
 - Chaque message IPC est chiffré (AES-GCM) entre l'iframe et le cœur : coût négligeable.
 - Toute nouvelle commande doit être ajoutée à trois endroits : `src-tauri/build.rs`, `isolation/index.js`, une capability (et la liste attendue du test). Le test échoue si l'un d'eux est oublié.
+
+## ADR-016 — Dépôt public dès l'étape 0
+**Statut** : Acceptée (17/11/2026), décision du porteur. Remplace la partie « visibilité » d'ADR-008.
+**Contexte** : ADR-008 prévoyait un dépôt privé jusqu'à l'étape 13. Le porteur a rendu le dépôt public à la fin de l'étape 0, notamment pour pouvoir consulter la CI sans authentification et pour la valeur portfolio du projet.
+**Décision** : le dépôt `mlft9/vigie` est public. Les éléments que l'étape 13 prévoyait « avant publication » sont avancés :
+- `LICENSE` : texte officiel de la GPL-3.0 (gnu.org), conformément à ADR-009 ;
+- `SECURITY.md` : politique de signalement (FR/EN) via le signalement privé de GitHub, avec des délais de réponse indicatifs.
+
+**Restent à faire par le porteur** :
+- activer le signalement privé (*Settings > Code security > Private vulnerability reporting*) ;
+- vérifier que « Vigie » n'est pas une marque déposée dans le domaine logiciel (INPI, EUIPO), comme prévu par ADR-014.
+
+**Alternatives écartées** : revenir en privé jusqu'à l'étape 13 (aucun bénéfice de sécurité : aucun secret n'est dans le dépôt, gitleaks le vérifie à chaque push).
+**Conséquences** :
+- Les minutes GitHub Actions sont gratuites pour un dépôt public : le coût des builds Windows n'est plus une contrainte. La stratégie d'ADR-008 (CI Linux à chaque push, `build.yml` manuel ou sur tag) est conservée par sobriété.
+- Tout ce qui est poussé devient public et durable (historique, artefacts, journaux de CI) : la règle « aucun secret dans le dépôt ni dans les journaux » prend encore plus d'importance.
+- Les contributions externes deviennent possibles : `pull_request_target` reste interdit, et les workflows n'exposent aucun secret aux PR venant de forks.
+- La signature de code via la SignPath Foundation (projets open source) pourra être demandée plus tôt, sans attendre l'étape 13.

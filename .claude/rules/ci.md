@@ -6,7 +6,8 @@ paths:
 
 # Règles CI / chaîne d'approvisionnement
 
-- Le dépôt est **privé** : les minutes GitHub Actions sont limitées et Windows compte double. Les tests rapides tournent sous Linux à chaque push, et `build.yml` (Windows + Linux) uniquement en manuel (`workflow_dispatch`) ou sur tag `v*`.
+- Le dépôt est **public** depuis l'étape 0 (ADR-016) : tout ce qui est poussé (historique, journaux de CI, artefacts) est visible de tous. Par sobriété, les tests rapides tournent sous Linux à chaque push, et `build.yml` (Windows + Linux) uniquement en manuel (`workflow_dispatch`) ou sur tag `v*`.
+- Des PR peuvent venir de forks : aucun secret ne doit être accessible à un workflow déclenché par `pull_request`.
 - Utilise le cache (`Swatinem/rust-cache`, cache npm) pour réduire les durées.
 - **Actions épinglées par SHA complet**, avec la version en commentaire (`uses: actions/checkout@<sha> # v4.x.x`). Dependabot les met à jour.
 - `permissions:` explicites et minimales au niveau du workflow (`contents: read` par défaut), élargies seulement dans le job qui en a besoin.
