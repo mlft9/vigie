@@ -16,7 +16,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Affichage du nom et de la version de l'application dans les Paramètres.
 - Journaux de diagnostic dans le dossier de l'application, conservés 7 jours, sans aucune donnée sensible. Leur niveau de détail se règle avec la variable `YOUNJI_LOG`.
 - Outillage de développement : une seule commande (`npm run check`) vérifie le formatage, le lint, les types et les tests ; `npm run audit` contrôle les vulnérabilités et les licences des dépendances.
-- Intégration continue : vérifications à chaque push (tests, audit des dépendances, détection de secrets) et compilation à la demande des installeurs Windows (NSIS, MSI) et Linux (deb, AppImage).
+- Intégration continue : vérifications à chaque push (tests, audit des dépendances, détection de secrets) et compilation à la demande des installeurs Windows (NSIS, MSI) et Linux (deb, AppImage), téléchargeables directement depuis la page du run, sans archive .zip.
 - Mises à jour hebdomadaires des dépendances par Dependabot, avec un délai de 7 jours avant d'adopter une nouvelle version.
 - Dépôt public sous licence GPL-3.0 (fichier `LICENSE`), avec une politique de signalement des vulnérabilités (`SECURITY.md`) (ADR-016).
 
