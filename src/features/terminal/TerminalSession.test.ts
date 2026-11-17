@@ -172,11 +172,17 @@ describe('TerminalSession', () => {
 
   it('garde l’alerte de clé modifiée affichée après la fin de session', async () => {
     const { emit, tab } = await connected();
-    emit({ type: 'hostKeyChanged', key: KEY, known: [KEY], knownHostsPath: '/kh' });
+    emit({
+      type: 'hostKeyChanged',
+      key: KEY,
+      known: [KEY],
+      knownHostsPath: '/kh',
+      hostPattern: 'srv.lab',
+    });
     emit({ type: 'disconnected', code: 'ssh.host_key_changed' });
     expect(tab()).toMatchObject({
       status: 'blocked',
-      hostKeyChange: { key: KEY, known: [KEY], knownHostsPath: '/kh' },
+      hostKeyChange: { key: KEY, known: [KEY], knownHostsPath: '/kh', hostPattern: 'srv.lab' },
     });
   });
 

@@ -23,7 +23,6 @@ export function HostKeyChangedAlert({ host, port, change, onClose }: HostKeyChan
   const { t } = useTranslation();
   const id = useId();
   const address = port === 22 ? host : `${host}:${port}`;
-  const pattern = port === 22 ? host : `[${host}]:${port}`;
 
   return (
     <section
@@ -41,12 +40,15 @@ export function HostKeyChangedAlert({ host, port, change, onClose }: HostKeyChan
       <p className="text-sm font-medium">{t('hostKey.changed.warning', { host: address })}</p>
       <p className="text-sm">{t('hostKey.changed.explanation')}</p>
       <Fingerprint label={t('hostKey.presented')} hostKey={change.key} />
-      {change.known.map((known) => (
-        <Fingerprint key={known.fingerprint} label={t('hostKey.changed.known')} hostKey={known} />
+      {change.known.map((known, index) => (
+        // Position plutôt qu'empreinte : une ligne illisible a une empreinte vide.
+        <Fingerprint key={index} label={t('hostKey.changed.known')} hostKey={known} />
       ))}
       <div className="flex flex-col gap-1 text-sm">
         <h3 className="font-medium">{t('hostKey.changed.unblockTitle')}</h3>
-        <p className="text-muted-foreground">{t('hostKey.changed.unblock', { host: pattern })}</p>
+        <p className="text-muted-foreground">
+          {t('hostKey.changed.unblock', { host: change.hostPattern })}
+        </p>
         <p className="font-mono text-xs break-all select-all">{change.knownHostsPath}</p>
       </div>
       <Button variant="outline" className="self-end" onClick={onClose}>

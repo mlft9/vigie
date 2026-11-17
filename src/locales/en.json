@@ -98,7 +98,8 @@
       "unblockTitle": "If the change is legitimate",
       "unblock": "Check the new fingerprint with the server's administrator, then delete the line starting with {{host}} in the file below. Host key management will come to the interface in step 2.",
       "close": "Close tab"
-    }
+    },
+    "unreadable": "(unreadable recorded key)"
   },
   "terminal": {
     "menu": "Terminal actions",

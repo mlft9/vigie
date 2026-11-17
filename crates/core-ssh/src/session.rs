@@ -43,6 +43,9 @@ pub const HIGH_WATERMARK: usize = 2 * 1024 * 1024;
 const CONTROL_CAPACITY: usize = 256;
 /// Taille maximale d'une bannière serveur affichée.
 const MAX_BANNER_LEN: usize = 8 * 1024;
+/// Total des bannières affichées par session : au-delà, un serveur qui en enverrait en
+/// boucle pendant l'authentification est ignoré.
+const MAX_BANNER_TOTAL: usize = 64 * 1024;
 
 /// Événement d'état d'une session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -282,6 +285,8 @@ impl SessionTask {
 
         let verdict = Arc::new(Mutex::new(None));
         let handler = ClientHandler {
+            flow: self.flow.clone(),
+            banner_budget: MAX_BANNER_TOTAL,
             known_hosts,
             host: target.host().to_owned(),
             port: target.port(),
@@ -482,6 +487,9 @@ async fn open_shell(
 
 /// Gestionnaire russh : vérification de la clé d'hôte et bannière.
 struct ClientHandler {
+    flow: Arc<Flow>,
+    /// Octets de bannière encore affichables pour cette session.
+    banner_budget: usize,
     known_hosts: Arc<KnownHosts>,
     host: String,
     port: u16,
@@ -522,6 +530,9 @@ impl ClientHandler {
         if !accepted {
             return self.refuse(SshError::HostKeyRejected);
         }
+        // Enregistrer ici est sûr : russh vérifie la signature du serveur sur l'échange de clés
+        // avant d'appeler `check_server_key` (documentation du trait `client::Handler`). Le
+        // serveur a donc prouvé qu'il possède la clé privée de la clé enregistrée.
         match self.known_hosts.add(&self.host, self.port, key) {
             Ok(()) => {
                 tracing::info!("nouvelle clé d'hôte enregistrée");
@@ -568,9 +579,13 @@ impl client::Handler for ClientHandler {
         _session: &mut client::Session,
     ) -> Result<(), Self::Error> {
         let text = sanitize_banner(banner);
-        if !text.is_empty() {
-            self.sink.output(text.into_bytes());
+        if text.is_empty() || text.len() > self.banner_budget {
+            return Ok(());
         }
+        self.banner_budget -= text.len();
+        // Comptée comme le reste de la sortie : l'acquittement de l'interface s'équilibre.
+        self.flow.sent(text.len());
+        self.sink.output(text.into_bytes());
         Ok(())
     }
 }

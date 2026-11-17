@@ -280,6 +280,7 @@ export class TerminalSession {
             key: event.key,
             known: event.known,
             knownHostsPath: event.knownHostsPath,
+            hostPattern: event.hostPattern,
           },
         });
         break;

@@ -45,7 +45,13 @@ export interface HostKeyInfo {
 /** Événement d'état d'une session (`SessionEventDto`). */
 export type SessionEvent =
   | { type: 'hostKeyUnknown'; key: HostKeyInfo }
-  | { type: 'hostKeyChanged'; key: HostKeyInfo; known: HostKeyInfo[]; knownHostsPath: string }
+  | {
+      type: 'hostKeyChanged';
+      key: HostKeyInfo;
+      known: HostKeyInfo[];
+      knownHostsPath: string;
+      hostPattern: string;
+    }
   | { type: 'authenticating' }
   | { type: 'connected' }
   | { type: 'disconnected'; code: string };

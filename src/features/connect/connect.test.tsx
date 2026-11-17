@@ -125,6 +125,7 @@ describe('clé d’hôte modifiée', () => {
           key: KEY,
           known: [{ algorithm: 'ecdsa-sha2-nistp256', fingerprint: 'SHA256:ancienne' }],
           knownHostsPath: 'C:/data/known_hosts',
+          hostPattern: 'srv',
         }}
         onClose={onClose}
       />,

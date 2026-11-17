@@ -87,6 +87,8 @@ pub enum SessionEventDto {
         known: Vec<KeyInfoDto>,
         /// Fichier à corriger à la main pour débloquer (étape 1, en attendant HKY-04).
         known_hosts_path: String,
+        /// Début exact de la ligne à supprimer (`hôte` ou `[hôte]:port`, normalisé).
+        host_pattern: String,
     },
     /// Authentification en cours.
     Authenticating,
@@ -97,13 +99,14 @@ pub enum SessionEventDto {
 }
 
 impl SessionEventDto {
-    fn from_event(event: SessionEvent, known_hosts_path: &str) -> Self {
+    fn from_event(event: SessionEvent, known_hosts_path: &str, host_pattern: &str) -> Self {
         match event {
             SessionEvent::HostKeyUnknown { key } => Self::HostKeyUnknown { key: key.into() },
             SessionEvent::HostKeyChanged { key, known } => Self::HostKeyChanged {
                 key: key.into(),
                 known: known.into_iter().map(Into::into).collect(),
                 known_hosts_path: known_hosts_path.to_owned(),
+                host_pattern: host_pattern.to_owned(),
             },
             SessionEvent::Authenticating => Self::Authenticating,
             SessionEvent::Connected => Self::Connected,
@@ -120,12 +123,13 @@ struct ChannelSink {
     output: Channel<InvokeResponseBody>,
     remover: SessionRemover,
     known_hosts_path: String,
+    host_pattern: String,
 }
 
 impl SessionSink for ChannelSink {
     fn event(&self, event: SessionEvent) {
         let last = matches!(event, SessionEvent::Disconnected { .. });
-        let dto = SessionEventDto::from_event(event, &self.known_hosts_path);
+        let dto = SessionEventDto::from_event(event, &self.known_hosts_path, &self.host_pattern);
         if self.events.send(dto).is_err() {
             tracing::debug!("événement de session non délivré (interface fermée)");
         }
@@ -184,6 +188,7 @@ pub async fn ssh_connect(
         }
     };
 
+    let host_pattern = core_ssh::known_hosts::host_pattern(target.host(), target.port());
     let known_hosts = state.known_hosts();
     let known_hosts_path = known_hosts.path().display().to_string();
     let params = ConnectParams {
@@ -199,6 +204,7 @@ pub async fn ssh_connect(
             output: on_output,
             remover,
             known_hosts_path,
+            host_pattern,
         };
         SessionHandle::spawn(params, Arc::new(sink))
     })?;
@@ -362,6 +368,7 @@ mod tests {
                 known: vec![key],
             },
             "/data/known_hosts",
+            "[srv]:2222",
         );
         assert_eq!(
             serde_json::to_value(event).unwrap(),
@@ -369,13 +376,15 @@ mod tests {
                 "type": "hostKeyChanged",
                 "key": { "algorithm": "ssh-ed25519", "fingerprint": "SHA256:abc" },
                 "known": [{ "algorithm": "ssh-ed25519", "fingerprint": "SHA256:abc" }],
-                "knownHostsPath": "/data/known_hosts"
+                "knownHostsPath": "/data/known_hosts",
+                "hostPattern": "[srv]:2222"
             })
         );
         let event = SessionEventDto::from_event(
             SessionEvent::Disconnected {
                 reason: SshError::AuthFailed,
             },
+            "",
             "",
         );
         assert_eq!(

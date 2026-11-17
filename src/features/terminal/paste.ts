@@ -33,7 +33,12 @@ const CONTROL_CHARACTERS = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x80-\x9f]/;
 
 /** Analyse un texte avant de le coller dans le terminal. */
 export function analyzePaste(raw: string): PasteAnalysis {
-  const text = raw.replace(BRACKETED_PASTE_MARKERS, '');
+  // Retrait répété : un marqueur imbriqué (ESC[20 ESC[201~ 1~) en reformerait un autre.
+  let text = raw;
+  for (let previous = ''; previous !== text;) {
+    previous = text;
+    text = text.replace(BRACKETED_PASTE_MARKERS, '');
+  }
   const lineCount = text.split(/\r\n|\r|\n/).length;
   const hasNewline = /[\r\n]/.test(text);
   const hasControlCharacters = CONTROL_CHARACTERS.test(text);

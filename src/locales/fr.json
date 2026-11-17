@@ -98,7 +98,8 @@
       "unblockTitle": "Si le changement est légitime",
       "unblock": "Vérifiez la nouvelle empreinte auprès de l'administrateur du serveur, puis supprimez la ligne commençant par {{host}} dans le fichier ci-dessous. La gestion des clés d'hôte arrivera dans l'interface à l'étape 2.",
       "close": "Fermer l'onglet"
-    }
+    },
+    "unreadable": "(clé enregistrée illisible)"
   },
   "terminal": {
     "menu": "Actions du terminal",

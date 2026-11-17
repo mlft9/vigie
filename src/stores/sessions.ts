@@ -33,6 +33,8 @@ export interface HostKeyChange {
   key: HostKeyInfo;
   known: HostKeyInfo[];
   knownHostsPath: string;
+  /** Début exact de la ligne `known_hosts` à supprimer pour débloquer. */
+  hostPattern: string;
 }
 
 export interface SessionTab {
