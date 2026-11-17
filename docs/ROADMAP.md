@@ -8,7 +8,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | # | Étape | Statut |
 |---|---|---|
 | 0 | Fondations | ✅ |
-| 1 | Terminal SSH multi-onglets | ⬜ |
+| 1 | Terminal SSH multi-onglets | 🟨 |
 | 2 | Coffre chiffré et carnet d'hôtes | ⬜ |
 | 3 | 2FA et générateur de clés | ⬜ |
 | 4 | SFTP | ⬜ |
