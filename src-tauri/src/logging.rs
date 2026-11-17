@@ -2,8 +2,10 @@
 //!
 //! Fichiers rotatifs quotidiens dans le dossier de journaux de l'application, 7 fichiers au plus.
 //! Règle absolue : aucun secret ni contenu de terminal ou de fichier transféré dans les journaux
-//! (SECURITE.md §6). Le niveau par défaut est `info` ; la variable `VIGIE_LOG` permet de
-//! l'ajuster (syntaxe `EnvFilter`, par exemple `VIGIE_LOG=debug`).
+//! (SECURITE.md §6). La variable `VIGIE_LOG` règle le niveau (`error` à `trace`, `info` par
+//! défaut) du **seul code de Vigie** : les dépendances restent plafonnées à `warn`, pour qu'un
+//! niveau de diagnostic élevé ne fasse jamais écrire à une bibliothèque des paquets réseau ou
+//! des arguments IPC (donc potentiellement des secrets) dans les journaux.
 
 use std::io;
 use std::path::Path;
@@ -11,11 +13,16 @@ use std::path::Path;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 /// Variable d'environnement qui règle le niveau des journaux.
 pub const LOG_ENV_VAR: &str = "VIGIE_LOG";
-const DEFAULT_DIRECTIVE: &str = "info";
+const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
+/// Plafond imposé aux dépendances, quel que soit `VIGIE_LOG`.
+const THIRD_PARTY_LEVEL: LevelFilter = LevelFilter::WARN;
+/// Cibles (noms de crates) du code de Vigie. Les crates `core_*` s'y ajouteront.
+const OWN_TARGETS: &[&str] = &["vigie", "vigie_lib"];
 const FILE_PREFIX: &str = "vigie";
 const FILE_SUFFIX: &str = "log";
 const MAX_LOG_FILES: usize = 7;
@@ -73,8 +80,25 @@ fn file_writer(dir: &Path) -> Result<(NonBlocking, WorkerGuard), LogError> {
     Ok(tracing_appender::non_blocking(appender))
 }
 
+/// Construit les directives de filtrage à partir de la valeur de `VIGIE_LOG`.
+/// Seul un niveau est accepté ; toute autre valeur (directive par cible, texte invalide) est
+/// ignorée au profit du niveau par défaut.
+fn filter_directives(requested: Option<&str>) -> String {
+    let level = requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<LevelFilter>().ok())
+        .unwrap_or(DEFAULT_LEVEL);
+    let mut directives = THIRD_PARTY_LEVEL.to_string().to_lowercase();
+    for target in OWN_TARGETS {
+        directives.push_str(&format!(",{target}={}", level.to_string().to_lowercase()));
+    }
+    directives
+}
+
 fn env_filter() -> EnvFilter {
-    EnvFilter::try_from_env(LOG_ENV_VAR).unwrap_or_else(|_| EnvFilter::new(DEFAULT_DIRECTIVE))
+    let requested = std::env::var(LOG_ENV_VAR).ok();
+    EnvFilter::new(filter_directives(requested.as_deref()))
 }
 
 /// Installe le collecteur global. En cas d'échec sur le fichier, on se replie sur la sortie
@@ -119,6 +143,46 @@ mod tests {
             .map(|entry| entry.unwrap().path())
             .filter(|path| path.extension().is_some_and(|ext| ext == FILE_SUFFIX))
             .collect()
+    }
+
+    #[test]
+    fn log_level_applies_only_to_vigie_targets() {
+        assert_eq!(filter_directives(None), "warn,vigie=info,vigie_lib=info");
+        assert_eq!(
+            filter_directives(Some("TRACE")),
+            "warn,vigie=trace,vigie_lib=trace"
+        );
+        assert_eq!(
+            filter_directives(Some(" debug ")),
+            "warn,vigie=debug,vigie_lib=debug"
+        );
+    }
+
+    #[test]
+    fn rejects_per_target_directives() {
+        // Une directive qui viserait une dépendance (ex. russh=trace) est ignorée.
+        for value in ["russh=trace", "trace,tauri=trace", "[{}]", ""] {
+            assert_eq!(
+                filter_directives(Some(value)),
+                "warn,vigie=info,vigie_lib=info",
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn third_party_trace_events_are_filtered_out() {
+        use tracing::Level;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let subscriber =
+            tracing_subscriber::registry().with(EnvFilter::new(filter_directives(Some("trace"))));
+        tracing::subscriber::with_default(subscriber, || {
+            assert!(tracing::enabled!(target: "vigie_lib::ssh", Level::TRACE));
+            assert!(!tracing::enabled!(target: "russh::cipher", Level::TRACE));
+            assert!(!tracing::enabled!(target: "tauri::ipc", Level::INFO));
+            assert!(tracing::enabled!(target: "tauri::ipc", Level::WARN));
+        });
     }
 
     #[test]
