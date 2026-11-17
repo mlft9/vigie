@@ -119,7 +119,7 @@ Même schéma, avec la magie `"VIGB"`, un **sel distinct** et une **phrase de pa
 
 ## 7. Mises à jour et signature
 - **Mises à jour** (étape 13) : `tauri-plugin-updater` avec une signature ed25519 (`tauri signer generate`). La clé publique est dans `tauri.conf.json`. La clé privée et sa passphrase vivent **uniquement** dans les secrets GitHub (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), avec une copie de secours hors ligne chez le porteur. **Jamais dans le dépôt**, et Claude Code n'y a pas accès.
-- **Signature du code Windows** : aucune tant que le projet est privé (avertissement SmartScreen accepté). À la publication, demande auprès de la SignPath Foundation (gratuite pour les projets open source sous licence approuvée par l'OSI).
+- **Signature du code Windows** : aucune pour l'instant (avertissement SmartScreen accepté). Le dépôt étant public depuis l'étape 0 (ADR-016), la demande auprès de la SignPath Foundation (gratuite pour les projets open source sous licence approuvée par l'OSI) peut être faite dès qu'une première version est publiée.
 
 ## 8. Chaîne d'approvisionnement
 - `Cargo.lock` et `package-lock.json` sont commités. La CI utilise `npm ci`.
@@ -130,4 +130,4 @@ Même schéma, avec la magie `"VIGB"`, un **sel distinct** et une **phrase de pa
 - Chaque nouvelle dépendance est justifiée : utilité, maintenance active, licence, surface d'attaque.
 
 ## 9. Signalement de vulnérabilités
-À la publication : fichier `SECURITY.md` à la racine, signalement privé activé sur GitHub (Private vulnerability reporting), engagement de délai de réponse.
+En place depuis l'étape 0 (ADR-016) : fichier [`SECURITY.md`](../SECURITY.md) à la racine (FR/EN), signalement via le signalement privé de GitHub (*Private vulnerability reporting*, à activer dans les paramètres du dépôt), accusé de réception sous 7 jours et première évaluation sous 14 jours.

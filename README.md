@@ -2,7 +2,7 @@
 
 Client **SSH / SFTP / RDP** de bureau pour **Windows et Linux**, dans l'esprit de MobaXterm et Termius, avec la sécurité comme priorité.
 
-> 🚧 **Statut** : étape 0 (Fondations) livrée, en cours de validation : squelette de l'application durci et outillé, sans fonctionnalité SSH pour l'instant. Avancement détaillé dans la [feuille de route](docs/ROADMAP.md). Dépôt privé.
+> 🚧 **Statut** : étape 0 (Fondations) livrée, en cours de validation : squelette de l'application durci et outillé, sans fonctionnalité SSH pour l'instant. Avancement détaillé dans la [feuille de route](docs/ROADMAP.md).
 
 ## Fonctionnalités prévues
 - Terminal SSH multi-onglets, écran partagé, diffusion de commandes vers plusieurs serveurs
@@ -46,7 +46,7 @@ Développe **nativement sous Windows**, pas dans WSL : c'est indispensable pour 
 - *(Optionnel)* [GitHub CLI](https://cli.github.com/) (`gh auth login`) pour que Claude Code puisse ouvrir des PR et lancer les compilations, toujours après ton accord
 
 ### 2. Créer le dépôt
-Sur GitHub, crée le dépôt **privé et vide** `vigie` (sans README, licence ni .gitignore). Ensuite, dans ce dossier :
+Sur GitHub, crée le dépôt **vide** `vigie` (sans README, licence ni .gitignore). Ensuite, dans ce dossier :
 ```powershell
 git init -b main
 git add .
@@ -99,7 +99,10 @@ Autres commandes : `/revue-securite [cible]` pour un audit ciblé, `/release 0.x
 
 ---
 
+## Sécurité
+Pour signaler une vulnérabilité, **n'ouvrez pas d'issue publique** : suivez la [politique de sécurité](SECURITY.md).
+
 ## Licence
-Le projet sera publié sous licence **GPL-3.0** lors de son passage en public.
+Distribué sous licence **GPL-3.0** : voir [LICENSE](LICENSE).
 
 *Développé avec l'assistance de Claude Code. Le processus est décrit dans l'[ADR-013](docs/DECISIONS.md#adr-013--développement-assisté-par-claude-code).*
