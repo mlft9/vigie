@@ -97,6 +97,17 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Ferme toutes les sessions (rechargement de l'interface : plus personne ne les pilote).
+    pub fn close_all_sessions(&self) {
+        let handles: Vec<_> = match self.sessions.lock() {
+            Ok(mut sessions) => sessions.drain().map(|(_, handle)| handle).collect(),
+            Err(_) => return,
+        };
+        for handle in handles {
+            handle.close();
+        }
+    }
+
     /// Mémorise un fichier de clé choisi par l'utilisateur et renvoie son identifiant.
     pub fn remember_key_file(&self, path: PathBuf) -> Result<KeyFileId, AppError> {
         let mut files = self.key_files.lock().map_err(|_| AppError::INTERNAL)?;

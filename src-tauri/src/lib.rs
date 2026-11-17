@@ -7,7 +7,7 @@ mod logging;
 mod navigation;
 mod state;
 
-use tauri::webview::NewWindowResponse;
+use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::state::SessionManager;
@@ -60,6 +60,14 @@ pub fn run() {
                         tracing::warn!(scheme = url.scheme(), "navigation refusée");
                     }
                     allowed
+                })
+                // Un rechargement de l'interface (F5, erreur) perd les Channel : les sessions
+                // n'auraient plus personne pour les piloter. On les ferme, ce qui efface aussi
+                // leurs secrets de la mémoire.
+                .on_page_load(|window, payload| {
+                    if payload.event() == PageLoadEvent::Started {
+                        window.state::<SessionManager>().close_all_sessions();
+                    }
                 })
                 .on_new_window(|url, _| {
                     tracing::warn!(scheme = url.scheme(), "ouverture de fenêtre refusée");
