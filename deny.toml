@@ -8,11 +8,17 @@ all-features = true
 
 [advisories]
 version = 2
-# Les crates non maintenues ou retirées (yanked) sont signalées comme des erreurs.
-unmaintained = "workspace"
+# Les crates non maintenues (dépendances directes et transitives) ou retirées (yanked)
+# sont des erreurs.
+unmaintained = "all"
 yanked = "deny"
-# Toute exception doit être justifiée ici, avec une date d'expiration.
-ignore = []
+# Toute exception est justifiée ici et réexaminée à chaque mise à jour de Tauri.
+ignore = [
+    # proc-macro-error n'est plus maintenue. Dépendance de compilation uniquement (macros de
+    # gtk-rs, chaîne Linux de Tauri) : aucun code embarqué dans l'application. Pas d'alternative
+    # tant que Tauri dépend de gtk-rs 0.18.
+    { id = "RUSTSEC-2024-0370", reason = "macro de compilation transitive de gtk-rs (Tauri), non maintenue, sans code à l'exécution" },
+]
 
 [licenses]
 version = 2

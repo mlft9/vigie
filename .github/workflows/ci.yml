@@ -29,7 +29,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      # Aucun script d'installation npm n'est exécuté (chaîne d'approvisionnement, menace M4).
+      - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm run test
       - name: Audit npm des dépendances embarquées (bloquant)

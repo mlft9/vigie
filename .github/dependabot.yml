@@ -1,10 +1,14 @@
 # Mises à jour hebdomadaires des dépendances (SECURITE.md §8).
+# cooldown : délai avant d'adopter une nouvelle version, pour laisser le temps de détecter une
+# publication compromise (attaques de type « ver npm » de 2025).
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       cargo-mineures:
         update-types: [minor, patch]
@@ -13,6 +17,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       npm-mineures:
         update-types: [minor, patch]
@@ -21,6 +27,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']

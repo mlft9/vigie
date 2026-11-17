@@ -56,9 +56,16 @@ jobs:
       - name: Toolchain (rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: npm ci
+      # Aucun script d'installation npm n'est exécuté (chaîne d'approvisionnement, menace M4).
+      - run: npm ci --ignore-scripts
       # Compilation directe avec la CLI Tauri : pas d'action tierce supplémentaire, aucun secret.
-      - run: npx tauri build --ci --bundles ${{ matrix.bundles }}
+      # --locked impose les versions de Cargo.lock. La valeur de la matrice passe par env:
+      # (jamais d'expression interpolée directement dans un script) ; bash sur les deux systèmes.
+      - name: Compiler les installeurs
+        shell: bash
+        env:
+          BUNDLES: ${{ matrix.bundles }}
+        run: npx tauri build --ci --bundles "$BUNDLES" -- --locked
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vigie-${{ matrix.name }}-${{ github.sha }}
