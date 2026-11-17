@@ -1,0 +1,94 @@
+# Intégration continue : vérifications rapides sous Linux à chaque push et à chaque PR (ADR-008).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Lecture seule par défaut ; aucun job n'a besoin de plus à ce jour.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  frontend:
+    name: Interface (lint, types, tests, audit npm)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      # Aucun script d'installation npm n'est exécuté (chaîne d'approvisionnement, menace M4).
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm run test
+      - name: Audit npm des dépendances embarquées (bloquant)
+        run: npm audit --omit=dev --audit-level=high
+      # Exception documentée dans SECURITE.md §8 : l'avis GHSA-fc5q-39xc-vjpf (picomatch,
+      # outillage de développement uniquement) n'a pas de correctif. Audit affiché, non bloquant.
+      - name: Audit npm complet (informatif)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  rust:
+    name: Rust (fmt, clippy, tests)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Dépendances système de Tauri (WebKitGTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libxdo-dev
+      - name: Toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  cargo-deny:
+    name: cargo-deny (avis, licences, sources)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2.1.2
+        with:
+          command: check
+
+  gitleaks:
+    name: Détection de secrets (gitleaks)
+    runs-on: ubuntu-22.04
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # Somme de contrôle publiée avec la version (gitleaks_<version>_checksums.txt).
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Installer gitleaks (binaire épinglé et vérifié)
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" gitleaks
+      - name: Analyser tout l'historique
+        run: ./gitleaks git --redact --verbose --exit-code 1 .

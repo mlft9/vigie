@@ -54,9 +54,7 @@
       "WebFetch(domain:ui.shadcn.com)",
       "WebFetch(domain:www.i18next.com)",
       "WebFetch(domain:developer.mozilla.org)",
-      "WebFetch(domain:rustsec.org)"
-    ],
-    "ask": [
+      "WebFetch(domain:rustsec.org)",
       "Bash(npm install *)",
       "Bash(npm uninstall *)",
       "Bash(cargo add *)",
@@ -79,14 +77,13 @@
       "PowerShell(git reset *)",
       "PowerShell(git tag *)",
       "PowerShell(gh *)",
-      "Edit(./docs/SECURITE.md)",
-      "Edit(./docs/DECISIONS.md)",
       "Edit(./src-tauri/tauri.conf.json)",
       "Edit(./deny.toml)",
       "Edit(./.gitignore)",
       "Edit(./src-tauri/capabilities/**)",
       "Edit(./.github/workflows/**)"
     ],
+    "ask": ["Edit(./docs/SECURITE.md)", "Edit(./docs/DECISIONS.md)"],
     "deny": [
       "Read(~/.ssh/**)",
       "Read(~/.tauri/**)",

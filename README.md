@@ -2,7 +2,7 @@
 
 Client **SSH / SFTP / RDP** de bureau pour **Windows et Linux**, dans l'esprit de MobaXterm et Termius, avec la sécurité comme priorité.
 
-> 🚧 **Statut** : cadrage terminé, développement pas encore commencé (étape 0). Dépôt privé.
+> 🚧 **Statut** : étape 0 (Fondations) livrée, en cours de validation : squelette de l'application durci et outillé, sans fonctionnalité SSH pour l'instant. Avancement détaillé dans la [feuille de route](docs/ROADMAP.md). Dépôt privé.
 
 ## Fonctionnalités prévues
 - Terminal SSH multi-onglets, écran partagé, diffusion de commandes vers plusieurs serveurs
@@ -36,9 +36,10 @@ Tauri 2 · Rust (russh, IronRDP, RustCrypto) · React · TypeScript · Tailwind 
 ### 1. Installer les prérequis
 Développe **nativement sous Windows**, pas dans WSL : c'est indispensable pour produire les binaires Windows.
 - [Git pour Windows](https://git-scm.com/download/win)
-- [Node.js LTS](https://nodejs.org/)
-- [Rust](https://rustup.rs/) avec la toolchain par défaut `stable-x86_64-pc-windows-msvc`
+- [Node.js](https://nodejs.org/) 22 ou plus récent
+- [Rust](https://rustup.rs/) avec la toolchain par défaut `stable-x86_64-pc-windows-msvc` (la version et les composants `rustfmt` / `clippy` sont fixés par `rust-toolchain.toml`)
 - [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/), charge de travail « Développement Desktop en C++ »
+- [cargo-deny](https://github.com/EmbarkStudios/cargo-deny), pour `npm run audit` : `cargo install --locked cargo-deny`
 - WebView2 : déjà présent sur Windows 11 et sur les Windows 10 à jour
 - Liste officielle et à jour : [prérequis Tauri](https://v2.tauri.app/start/prerequisites/)
 - [Claude Code](https://code.claude.com/docs/en/setup)
@@ -71,7 +72,14 @@ Puis démarre :
 /etape 0
 ```
 
-### 5. Le cycle de travail
+### 5. Lancer l'application
+```powershell
+npm ci --ignore-scripts
+npm run tauri dev
+```
+`--ignore-scripts` : aucun script d'installation npm n'est exécuté, comme en CI. Avant de livrer : `npm run check` (lint, types, tests front et Rust). Liste complète des commandes : [AGENTS.md](AGENTS.md).
+
+### 6. Le cycle de travail
 ```
 /etape N  →  Claude propose un plan  →  tu valides (ou corriges)
           →  Claude code, teste, fait relire la sécurité, documente

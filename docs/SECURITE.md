@@ -104,7 +104,10 @@ Même schéma, avec la magie `"VIGB"`, un **sel distinct** et une **phrase de pa
 - La WebView est **non fiable**. Toute entrée IPC est validée côté Rust : types, longueurs, ports (1–65535), chemins canonicalisés, identifiants existants.
 - **Les secrets ne transitent qu'une fois**, de l'interface vers le cœur au moment de la saisie. Ensuite, l'interface manipule des identifiants (`identity_id`). Aucune commande ne renvoie un secret.
 - CSP stricte, aucun contenu distant, `withGlobalTauri: false`, capabilities minimales par fenêtre, pas de plugin `shell` exposé à l'interface. Détails dans `.claude/rules/tauri-config.md`.
-- **Modèle d'isolation Tauri** (iframe sandboxée qui intercepte l'IPC) : à évaluer à l'étape 0 et à consigner dans un ADR. Il apporte une défense en profondeur contre une dépendance frontend compromise (M4).
+- **Modèle d'isolation Tauri** (iframe sandboxée qui intercepte l'IPC) : **activé** depuis l'étape 0 (ADR-015), avec une liste blanche de commandes (`isolation/index.js`). C'est une défense en profondeur **« au mieux »**, pas une barrière : un test sur build réel (17/11/2026) a montré qu'un script de la fenêtre principale qui intercepte `fetch` récupère la clé d'invocation et appelle une commande directement, sans passer par l'iframe (le nom de commande est dans l'URL, non authentifié). Les vraies barrières restent les **capabilities** et la **validation côté Rust** de chaque entrée. On n'accorde jamais une permission en comptant sur le filtrage de l'isolation, et on ne lui confie aucune validation de charge utile.
+- **Navigation** : la fenêtre principale ne peut naviguer que vers l'origine de l'application (et le serveur Vite en développement) ; l'ouverture de nouvelles fenêtres est refusée (`src-tauri/src/navigation.rs`). La CSP ne couvre pas la navigation de premier niveau.
+- **Journaux** : `VIGIE_LOG` ne règle que le niveau du code de Vigie ; les dépendances restent plafonnées à `warn`, pour qu'un niveau `trace` ne fasse jamais journaliser des paquets ou des arguments IPC.
+- **Commandes applicatives soumises aux capabilities** : chaque commande est déclarée dans `src-tauri/build.rs` et doit être accordée explicitement (`allow-<commande>`) dans une capability. Un test (`tests/security/tauri-config.test.ts`) vérifie la cohérence entre `build.rs`, la liste blanche de l'isolation et les capabilities, ainsi que les invariants de la CSP.
 
 ## 6. Fuites par effet de bord
 - **Journaux** : jamais de secret, jamais le contenu du terminal ni des fichiers transférés. L'hôte, le port et l'utilisateur sont tolérés au niveau `debug`. Les types qui contiennent des secrets ont un `Debug` masqué.
@@ -122,6 +125,7 @@ Même schéma, avec la magie `"VIGB"`, un **sel distinct** et une **phrase de pa
 - `Cargo.lock` et `package-lock.json` sont commités. La CI utilise `npm ci`.
 - `cargo-deny` : avis RustSec, licences compatibles GPL-3.0, sources limitées à crates.io, doublons signalés.
 - `npm audit --audit-level=high` en CI, Dependabot hebdomadaire (cargo, npm, actions).
+  - **Exception en cours (17/11/2026, décision du porteur)** : l'avis [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (ReDoS dans `picomatch` ≤ 4.0.7) n'a aucune version corrigée. `picomatch` n'est utilisé que par l'outillage de développement (Vite, Vitest, ESLint), avec nos propres motifs de fichiers, et n'est pas embarqué dans l'application. En attendant un correctif : l'audit des dépendances **embarquées** (`npm audit --omit=dev --audit-level=high`) reste bloquant, et l'audit complet est affiché en CI sans bloquer. **À retirer dès qu'une version corrigée de `picomatch` est publiée** : rétablir l'audit complet bloquant dans `ci.yml` et dans `npm run audit`.
 - Actions GitHub épinglées par SHA, `permissions` minimales, gitleaks à chaque push.
 - Chaque nouvelle dépendance est justifiée : utilité, maintenance active, licence, surface d'attaque.
 

@@ -19,6 +19,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 012 | Déverrouillage : mot de passe maître + système en option | Acceptée |
 | 013 | Développement assisté par Claude Code | Acceptée |
 | 014 | Nom définitif : Vigie | Acceptée |
+| 015 | Modèle d'isolation Tauri et commandes soumises aux capabilities | Acceptée |
 
 ---
 
@@ -114,3 +115,22 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 **Vérification faite** : aucun client SSH ni outil d'accès distant connu ne porte ce nom (recherche web du 17/11/2026).
 **Reste à faire (étape 13)** : vérifier les marques déposées dans le domaine logiciel (INPI, EUIPO) avant la publication.
 **Conséquences** : aucune migration à prévoir. Le mot est le même en français et proche en anglais (*vigil*), facile à prononcer.
+
+## ADR-015 — Modèle d'isolation Tauri et commandes soumises aux capabilities
+**Statut** : Acceptée (17/11/2026), décision du porteur
+**Contexte** : `SECURITE.md` §5 demandait d'évaluer le modèle d'isolation de Tauri à l'étape 0. La menace visée est M4 : une dépendance npm compromise qui s'exécute dans la WebView et tente d'appeler le cœur Rust.
+**Décision** :
+- **Isolation activée** : `app.security.pattern` en mode `isolation`, application d'isolation dans `isolation/`. Le script est classique (pas de module ES), car les modules ne se chargent pas dans l'iframe sandboxée sous WebView2. Il applique une **liste blanche de commandes**. Une commande refusée est remplacée par `vigie_isolation_denied` (commande inexistante), sans sa charge utile : l'appel échoue avec une erreur. Lever une exception dans le hook laisserait la promesse de l'appel en attente indéfiniment.
+- **Commandes applicatives soumises aux capabilities** : chaque commande est déclarée dans `src-tauri/build.rs` (`AppManifest`). Tauri génère une permission `allow-<commande>`, qu'une capability doit accorder explicitement (`allow-app-info` dans `capabilities/main.json`).
+- **Garde-fou automatique** : `tests/security/tauri-config.test.ts` impose la cohérence entre `build.rs`, la liste blanche de l'isolation et les capabilities, et compare les permissions accordées à une liste exacte.
+
+**Limite constatée** (test sur un build réel piloté par CDP, 17/11/2026) : un script de la fenêtre principale qui intercepte `fetch` récupère l'en-tête `Tauri-Invoke-Key`, puis appelle `http://ipc.localhost/<commande>` directement avec un corps vide, sans passer par l'iframe. L'appel `plugin:app|version` n'a été arrêté que par l'ACL (capabilities). L'isolation est donc une défense en profondeur « au mieux », pas une barrière : les vraies barrières sont les **capabilities** et la **validation côté Rust**.
+**Règles qui en découlent** : ne jamais accorder une permission en comptant sur le filtrage de l'isolation ; ne jamais confier à l'isolation la validation d'une charge utile.
+**Alternatives écartées** :
+- Pas d'isolation (CSP + capabilities seules) : écarté, l'isolation reste une couche de plus à coût faible.
+- Ajouter à la CSP le hash de la balise `<style>` injectée par Tauri : écarté, on préfère ne pas élargir la CSP pour un besoin purement visuel.
+
+**Conséquences** :
+- La balise `<style>` que Tauri injecte pour masquer l'iframe d'isolation est bloquée par notre CSP (`style-src 'self'`). L'iframe est masquée depuis `src/index.css`, sans assouplir la CSP. Deux avertissements CSP apparaissent dans la console : ils sont attendus.
+- Chaque message IPC est chiffré (AES-GCM) entre l'iframe et le cœur : coût négligeable.
+- Toute nouvelle commande doit être ajoutée à trois endroits : `src-tauri/build.rs`, `isolation/index.js`, une capability (et la liste attendue du test). Le test échoue si l'un d'eux est oublié.
