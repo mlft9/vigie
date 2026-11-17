@@ -14,7 +14,12 @@
   },
   "tabs": {
     "label": "Onglets",
-    "home": "Accueil"
+    "home": "Accueil",
+    "newSession": "Nouvelle session",
+    "new": "Nouvelle session (Ctrl+Maj+T)",
+    "close": "Fermer l'onglet {{title}}",
+    "renameLabel": "Nom de l'onglet",
+    "renameHint": "Double-clic ou F2 pour renommer, glisser pour déplacer"
   },
   "sections": {
     "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
@@ -45,6 +50,102 @@
       "title": "À propos",
       "version": "Version",
       "unavailable": "indisponible"
+    }
+  },
+  "common": {
+    "cancel": "Annuler"
+  },
+  "connect": {
+    "title": "Connexion rapide",
+    "reconnectTitle": "Se reconnecter",
+    "host": "Hôte",
+    "hostPlaceholder": "serveur.exemple.fr ou 192.168.1.10",
+    "port": "Port",
+    "username": "Utilisateur",
+    "authMethod": "Authentification",
+    "auth": {
+      "password": "Mot de passe",
+      "key": "Clé privée"
+    },
+    "password": "Mot de passe",
+    "keyFile": "Fichier de clé",
+    "chooseKey": "Choisir une clé…",
+    "noKey": "Aucune clé sélectionnée",
+    "passphrase": "Passphrase",
+    "passphraseHint": "Laissez vide si la clé n'est pas protégée.",
+    "submit": "Se connecter"
+  },
+  "session": {
+    "connecting": "Connexion à {{host}}…",
+    "authenticating": "Authentification…",
+    "reconnect": "Reconnecter",
+    "closeTab": "Fermer l'onglet"
+  },
+  "hostKey": {
+    "presented": "Clé présentée par le serveur",
+    "unknown": {
+      "title": "Hôte inconnu",
+      "intro": "C'est la première connexion à {{host}}. Younji ne peut pas encore garantir que ce serveur est bien celui que vous croyez.",
+      "verify": "Comparez cette empreinte avec celle du serveur (commande ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub sur le serveur) avant d'accepter. Une fois acceptée, la clé est mémorisée.",
+      "reject": "Refuser",
+      "accept": "Accepter et se connecter"
+    },
+    "changed": {
+      "title": "Clé d'hôte modifiée : connexion bloquée",
+      "warning": "La clé présentée par {{host}} ne correspond pas à celle enregistrée.",
+      "explanation": "Quelqu'un tente peut-être d'intercepter la connexion (attaque de l'homme du milieu). Il peut aussi s'agir d'un serveur réinstallé ou de clés régénérées. Aucun identifiant n'a été envoyé.",
+      "known": "Clé enregistrée",
+      "unblockTitle": "Si le changement est légitime",
+      "unblock": "Vérifiez la nouvelle empreinte auprès de l'administrateur du serveur, puis supprimez la ligne commençant par {{host}} dans le fichier ci-dessous. La gestion des clés d'hôte arrivera dans l'interface à l'étape 2.",
+      "close": "Fermer l'onglet"
+    }
+  },
+  "terminal": {
+    "menu": "Actions du terminal",
+    "copy": "Copier",
+    "paste": "Coller",
+    "search": "Rechercher"
+  },
+  "search": {
+    "label": "Rechercher dans le terminal",
+    "placeholder": "Rechercher…",
+    "previous": "Résultat précédent",
+    "next": "Résultat suivant",
+    "close": "Fermer la recherche",
+    "notFound": "Aucun résultat"
+  },
+  "paste": {
+    "title": "Confirmer le collage",
+    "lines_one": "Le texte à coller tient sur {{count}} ligne.",
+    "lines_other": "Le texte à coller contient {{count}} lignes : chaque retour à la ligne exécutera une commande.",
+    "controlCharacters": "Attention : il contient des caractères de contrôle invisibles (affichés ci-dessous par des symboles).",
+    "preview": "Aperçu du texte à coller",
+    "truncated": "Aperçu tronqué : le texte complet sera collé.",
+    "confirm": "Coller"
+  },
+  "link": {
+    "title": "Ouvrir ce lien ?",
+    "description": "Le texte affiché dans le terminal peut différer de l'adresse réelle. Vérifiez-la avant de l'ouvrir dans votre navigateur :",
+    "open": "Ouvrir dans le navigateur"
+  },
+  "shortcuts": {
+    "keys": {
+      "ctrl": "Ctrl",
+      "shift": "Maj"
+    },
+    "title": "Raccourcis clavier",
+    "description": "Ils utilisent Ctrl+Maj pour laisser au shell ses propres raccourcis (Ctrl+C, Ctrl+R, Ctrl+W…).",
+    "pasteAlternative": "Maj+Inser colle aussi dans le terminal. Les liens s'ouvrent par Ctrl+clic.",
+    "actions": {
+      "newTab": "Nouvelle session",
+      "closeTab": "Fermer l'onglet",
+      "nextTab": "Onglet suivant",
+      "previousTab": "Onglet précédent",
+      "moveTabLeft": "Déplacer l'onglet à gauche",
+      "moveTabRight": "Déplacer l'onglet à droite",
+      "search": "Rechercher dans le terminal",
+      "copy": "Copier la sélection",
+      "paste": "Coller"
     }
   },
   "errors": {
@@ -92,6 +193,11 @@
       "session_closed": "Session fermée.",
       "session_not_found": "Cette session n'existe plus.",
       "too_many_sessions": "Trop de sessions ouvertes. Fermez-en avant d'en ouvrir une nouvelle."
+    },
+    "connect": {
+      "missing_fields": "Renseignez l'hôte et l'utilisateur.",
+      "missing_password": "Saisissez le mot de passe.",
+      "missing_key": "Choisissez un fichier de clé privée."
     }
   }
 }

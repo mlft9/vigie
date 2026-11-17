@@ -10,6 +10,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
+import { HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { type Section, useUi } from '@/stores/ui';
 
 const ITEMS: readonly { section: Section; icon: LucideIcon }[] = [
@@ -23,6 +24,7 @@ const ITEMS: readonly { section: Section; icon: LucideIcon }[] = [
 function SidebarItem({ section, icon: Icon }: { section: Section; icon: LucideIcon }) {
   const { t } = useTranslation();
   const active = useUi((s) => s.activeSection === section);
+  const activateTab = useSessions((s) => s.activate);
   const setActiveSection = useUi((s) => s.setActiveSection);
 
   return (
@@ -32,6 +34,8 @@ function SidebarItem({ section, icon: Icon }: { section: Section; icon: LucideIc
         aria-current={active ? 'page' : undefined}
         onClick={() => {
           setActiveSection(section);
+          // Les sections s'affichent dans l'onglet d'accueil.
+          activateTab(HOME_TAB_ID);
         }}
         className={cn(
           'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm outline-none transition-colors',
