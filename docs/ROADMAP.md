@@ -7,7 +7,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 
 | # | Étape | Statut |
 |---|---|---|
-| 0 | Fondations | 🟨 |
+| 0 | Fondations | ✅ |
 | 1 | Terminal SSH multi-onglets | ⬜ |
 | 2 | Coffre chiffré et carnet d'hôtes | ⬜ |
 | 3 | 2FA et générateur de clés | ⬜ |
@@ -50,11 +50,11 @@ Contenu :
   - Dependabot (cargo, npm, actions). Actions épinglées par SHA, permissions minimales.
 
 **Critères d'acceptation**
-- [ ] `npm run tauri dev` ouvre la fenêtre sous Windows.
-- [ ] La langue bascule FR ↔ EN à chaud.
-- [ ] Le thème suit le système et peut être forcé.
-- [ ] `npm run check` passe et la CI est verte.
-- [ ] Le workflow `build.yml` lancé à la main produit des installeurs Windows et Linux qui s'installent et se lancent.
+- [x] `npm run tauri dev` ouvre la fenêtre sous Windows.
+- [x] La langue bascule FR ↔ EN à chaud.
+- [x] Le thème suit le système et peut être forcé.
+- [x] `npm run check` passe et la CI est verte.
+- [x] Le workflow `build.yml` lancé à la main produit des installeurs Windows et Linux qui s'installent et se lancent.
 
 ---
 

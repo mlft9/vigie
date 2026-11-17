@@ -1,5 +1,6 @@
 # Compilation des installeurs Windows et Linux, uniquement à la demande ou sur tag (ADR-008).
-# Les installeurs sont publiés comme artefacts du workflow (pas de release tant que le dépôt est privé).
+# Chaque installeur est publié comme artefact individuel, non zippé, téléchargeable directement
+# depuis la page du run (pas de release GitHub à ce stade).
 name: Build
 
 on:
@@ -27,16 +28,15 @@ jobs:
           - name: Windows
             os: windows-latest
             bundles: nsis,msi
-            artifacts: |
-              target/release/bundle/nsis/*.exe
-              target/release/bundle/msi/*.msi
+            # Un fichier par entrée : chacun est publié sans archive (voir les étapes d'envoi).
+            installer_1: target/release/bundle/nsis/*-setup.exe
+            installer_2: target/release/bundle/msi/*.msi
           - name: Linux
             # Ubuntu 22.04 : paquets compatibles avec les glibc plus anciennes.
             os: ubuntu-22.04
             bundles: deb,appimage
-            artifacts: |
-              target/release/bundle/deb/*.deb
-              target/release/bundle/appimage/*.AppImage
+            installer_1: target/release/bundle/deb/*.deb
+            installer_2: target/release/bundle/appimage/*.AppImage
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,9 +66,19 @@ jobs:
         env:
           BUNDLES: ${{ matrix.bundles }}
         run: npx tauri build --ci --bundles "$BUNDLES" -- --locked
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      # archive: false publie l'installeur tel quel (pas de .zip) ; l'artefact porte alors le nom
+      # du fichier. Cette option n'accepte qu'un fichier par envoi, d'où deux étapes.
+      - name: Publier le premier installeur
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: younji-${{ matrix.name }}-${{ github.sha }}
-          path: ${{ matrix.artifacts }}
+          path: ${{ matrix.installer_1 }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publier le second installeur
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ matrix.installer_2 }}
+          archive: false
           if-no-files-found: error
           retention-days: 14
