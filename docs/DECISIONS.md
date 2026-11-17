@@ -29,6 +29,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 022 | Liens du terminal : http(s), Ctrl+clic, revalidation côté Rust | Acceptée |
 | 023 | TOFU strict : anti-rétrogradation et `known_hosts` en clair | Acceptée |
 | 024 | Flux du terminal : acquittement et deux `Channel` | Acceptée |
+| 025 | xterm.js 5.5 plutôt que 6, pour garder `freezePrototype` | Acceptée |
 
 ---
 
@@ -267,3 +268,13 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Pas de contrôle de flux : mémoire non bornée, interface submergée.
 
 **Conséquences** : mémoire bornée par session. Toute autre commande interne de Tauri reste refusée par l'isolation ; un test le vérifie.
+
+## ADR-025 — xterm.js 5.5 plutôt que 6, pour garder `freezePrototype`
+**Statut** : Acceptée (18/11/2026), décision du porteur. Précise ADR-003 (choix de xterm.js) ; ADR-018 reste valable, xterm.js 5.5 injectant aussi des balises `<style>`.
+**Contexte** : au premier lancement réel (`npm run tauri dev`), la fenêtre restait blanche. Tauri gèle `Object.prototype` avant tout script (`freezePrototype: true`, durcissement contre la pollution de prototype). Le code de VS Code embarqué dans xterm.js 6 (espace de noms `KeyCodeUtils`) affecte `toString` à un objet ordinaire dès le chargement du module : en mode strict, l'affectation d'une propriété héritée en lecture seule lève une exception, et tout le JavaScript de l'application échoue. Les tests ne le voyaient pas, car ils tournaient sans ce gel.
+**Décision** : revenir à la génération xterm.js 5.5 (`@xterm/xterm` 5.5.0, addons fit 0.10, search 0.15, web-links 0.11, unicode11 0.8, webgl 0.18), vérifiée compatible avec le prototype gelé, et garder `freezePrototype`. Un test de non-régression (`src/frozen-prototype.test.tsx`) gèle `Object.prototype`, puis charge xterm.js et ses addons, affiche l'application et ouvre un terminal.
+**Alternatives écartées** :
+- Désactiver `freezePrototype` : retire une défense en profondeur contre une dépendance npm compromise (menace M4).
+- Réécrire l'affectation fautive de xterm.js 6 à la compilation (plugin Vite) : rustine fragile, à revérifier à chaque mise à jour.
+
+**Conséquences** : les fonctions utilisées sont identiques en 5.5. Une mise à jour vers xterm.js 6 (Dependabot) fera échouer le test de non-régression tant que xterm.js n'aura pas corrigé ce point ; à réexaminer à chaque version majeure.

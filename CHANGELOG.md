@@ -26,6 +26,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Raccourcis clavier en Ctrl+Maj, pour laisser au shell les siens (Ctrl+C, Ctrl+R, Ctrl+W…). Leur liste est affichée dans les Paramètres.
 - Détection des coupures réseau : l'onglet passe à « déconnecté » et propose de se reconnecter, avec le formulaire pré-rempli (le mot de passe ou la passphrase est redemandé).
 - L'interface reste réactive même quand le serveur envoie un très gros volume de texte (`cat` d'un gros fichier, `yes`).
+- Terminal basé sur xterm.js 5.5 : la version 6 empêchait l'application de démarrer avec le durcissement `freezePrototype` (fenêtre blanche) ; un test le vérifie désormais (ADR-025).
 - Tests d'intégration contre un vrai serveur OpenSSH, lancés en conteneur à chaque push et utilisables en local (`npm run test:integration`).
 
 ### Sécurité
