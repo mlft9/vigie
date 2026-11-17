@@ -83,10 +83,7 @@
       "Edit(./src-tauri/capabilities/**)",
       "Edit(./.github/workflows/**)"
     ],
-    "ask": [
-      "Edit(./docs/SECURITE.md)",
-      "Edit(./docs/DECISIONS.md)"
-    ],
+    "ask": ["Edit(./docs/SECURITE.md)", "Edit(./docs/DECISIONS.md)"],
     "deny": [
       "Read(~/.ssh/**)",
       "Read(~/.tauri/**)",
