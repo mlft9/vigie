@@ -22,4 +22,5 @@ zeroize = "1.9"
 workspace = true
 
 [dev-dependencies]
+rand = "0.10"
 tokio = { version = "1.54", features = ["rt-multi-thread", "test-util"] }
