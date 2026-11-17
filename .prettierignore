@@ -1,0 +1,10 @@
+dist/
+coverage/
+target/
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+package-lock.json
+Cargo.lock
+# La documentation est rédigée à la main : on ne la reformate pas.
+*.md
