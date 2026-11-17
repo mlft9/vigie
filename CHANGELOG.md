@@ -8,13 +8,13 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 ### Ajouté
 - Cadrage du projet : cahier des charges, feuille de route, architecture, règles de sécurité, journal des décisions, environnement de test.
 - Configuration de Claude Code : instructions du projet, agents (sécurité, QA, documentation), commandes `/etape`, `/retour`, `/release` et `/revue-securite`.
-- Choix du nom définitif du projet : **Vigie** (ADR-014).
+- Choix du nom définitif du projet : **Vigie** (ADR-014), puis changement pour **Younji** (ADR-017), « Vigie » étant déjà une marque déposée pour des logiciels.
 - Première version de l'application de bureau (Tauri 2 + React) pour Windows et Linux.
 - Mise en page de base : barre latérale (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres) et zone d'onglets. Seuls les Paramètres sont fonctionnels pour l'instant.
 - Interface en français et en anglais : langue du système détectée au démarrage, changement de langue à chaud depuis les Paramètres.
 - Thème clair ou sombre, qui suit le système par défaut et peut être forcé.
 - Affichage du nom et de la version de l'application dans les Paramètres.
-- Journaux de diagnostic dans le dossier de l'application, conservés 7 jours, sans aucune donnée sensible. Leur niveau de détail se règle avec la variable `VIGIE_LOG`.
+- Journaux de diagnostic dans le dossier de l'application, conservés 7 jours, sans aucune donnée sensible. Leur niveau de détail se règle avec la variable `YOUNJI_LOG`.
 - Outillage de développement : une seule commande (`npm run check`) vérifie le formatage, le lint, les types et les tests ; `npm run audit` contrôle les vulnérabilités et les licences des dépendances.
 - Intégration continue : vérifications à chaque push (tests, audit des dépendances, détection de secrets) et compilation à la demande des installeurs Windows (NSIS, MSI) et Linux (deb, AppImage).
 - Mises à jour hebdomadaires des dépendances par Dependabot, avec un délai de 7 jours avant d'adopter une nouvelle version.

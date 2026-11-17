@@ -1,6 +1,6 @@
 ---
 name: release
-description: Prépare une version de Vigie (numéro de version synchronisé, CHANGELOG, tag) pour déclencher la compilation des installeurs en CI.
+description: Prépare une version de Younji (numéro de version synchronisé, CHANGELOG, tag) pour déclencher la compilation des installeurs en CI.
 argument-hint: [version, ex. 0.2.0]
 disable-model-invocation: true
 ---

@@ -13,10 +13,15 @@ coverage/
 !.env.example
 *.key
 *.pem
-vigie_test_*
+younji_test_*
 id_rsa*
 id_ed25519*
 id_ecdsa*
+*.younji
+*.younji.bak
+*.younji-backup
+# Anciens noms (avant ADR-017) : conservés pour protéger d'éventuels fichiers existants.
+vigie_test_*
 *.vigie
 *.vigie.bak
 *.vigie-backup

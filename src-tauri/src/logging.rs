@@ -2,8 +2,8 @@
 //!
 //! Fichiers rotatifs quotidiens dans le dossier de journaux de l'application, 7 fichiers au plus.
 //! Règle absolue : aucun secret ni contenu de terminal ou de fichier transféré dans les journaux
-//! (SECURITE.md §6). La variable `VIGIE_LOG` règle le niveau (`error` à `trace`, `info` par
-//! défaut) du **seul code de Vigie** : les dépendances restent plafonnées à `warn`, pour qu'un
+//! (SECURITE.md §6). La variable `YOUNJI_LOG` règle le niveau (`error` à `trace`, `info` par
+//! défaut) du **seul code de Younji** : les dépendances restent plafonnées à `warn`, pour qu'un
 //! niveau de diagnostic élevé ne fasse jamais écrire à une bibliothèque des paquets réseau ou
 //! des arguments IPC (donc potentiellement des secrets) dans les journaux.
 
@@ -17,13 +17,13 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 
 /// Variable d'environnement qui règle le niveau des journaux.
-pub const LOG_ENV_VAR: &str = "VIGIE_LOG";
+pub const LOG_ENV_VAR: &str = "YOUNJI_LOG";
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
-/// Plafond imposé aux dépendances, quel que soit `VIGIE_LOG`.
+/// Plafond imposé aux dépendances, quel que soit `YOUNJI_LOG`.
 const THIRD_PARTY_LEVEL: LevelFilter = LevelFilter::WARN;
-/// Cibles (noms de crates) du code de Vigie. Les crates `core_*` s'y ajouteront.
-const OWN_TARGETS: &[&str] = &["vigie", "vigie_lib"];
-const FILE_PREFIX: &str = "vigie";
+/// Cibles (noms de crates) du code de Younji. Les crates `core_*` s'y ajouteront.
+const OWN_TARGETS: &[&str] = &["younji", "younji_lib"];
+const FILE_PREFIX: &str = "younji";
 const FILE_SUFFIX: &str = "log";
 const MAX_LOG_FILES: usize = 7;
 
@@ -80,7 +80,7 @@ fn file_writer(dir: &Path) -> Result<(NonBlocking, WorkerGuard), LogError> {
     Ok(tracing_appender::non_blocking(appender))
 }
 
-/// Construit les directives de filtrage à partir de la valeur de `VIGIE_LOG`.
+/// Construit les directives de filtrage à partir de la valeur de `YOUNJI_LOG`.
 /// Seul un niveau est accepté ; toute autre valeur (directive par cible, texte invalide) est
 /// ignorée au profit du niveau par défaut.
 fn filter_directives(requested: Option<&str>) -> String {
@@ -146,15 +146,15 @@ mod tests {
     }
 
     #[test]
-    fn log_level_applies_only_to_vigie_targets() {
-        assert_eq!(filter_directives(None), "warn,vigie=info,vigie_lib=info");
+    fn log_level_applies_only_to_younji_targets() {
+        assert_eq!(filter_directives(None), "warn,younji=info,younji_lib=info");
         assert_eq!(
             filter_directives(Some("TRACE")),
-            "warn,vigie=trace,vigie_lib=trace"
+            "warn,younji=trace,younji_lib=trace"
         );
         assert_eq!(
             filter_directives(Some(" debug ")),
-            "warn,vigie=debug,vigie_lib=debug"
+            "warn,younji=debug,younji_lib=debug"
         );
     }
 
@@ -164,7 +164,7 @@ mod tests {
         for value in ["russh=trace", "trace,tauri=trace", "[{}]", ""] {
             assert_eq!(
                 filter_directives(Some(value)),
-                "warn,vigie=info,vigie_lib=info",
+                "warn,younji=info,younji_lib=info",
                 "{value}"
             );
         }
@@ -178,7 +178,7 @@ mod tests {
         let subscriber =
             tracing_subscriber::registry().with(EnvFilter::new(filter_directives(Some("trace"))));
         tracing::subscriber::with_default(subscriber, || {
-            assert!(tracing::enabled!(target: "vigie_lib::ssh", Level::TRACE));
+            assert!(tracing::enabled!(target: "younji_lib::ssh", Level::TRACE));
             assert!(!tracing::enabled!(target: "russh::cipher", Level::TRACE));
             assert!(!tracing::enabled!(target: "tauri::ipc", Level::INFO));
             assert!(tracing::enabled!(target: "tauri::ipc", Level::WARN));
@@ -203,7 +203,7 @@ mod tests {
         let files = log_files(&dir);
         assert_eq!(files.len(), 1);
         let name = files[0].file_name().unwrap().to_string_lossy().into_owned();
-        assert!(name.starts_with("vigie."), "nom inattendu : {name}");
+        assert!(name.starts_with("younji."), "nom inattendu : {name}");
         let content = std::fs::read_to_string(&files[0]).unwrap();
         assert!(content.contains("message de test"));
     }

@@ -13,14 +13,14 @@ En CI, un conteneur `sshd` remplace la VM Linux (créé à l'étape 1 dans `test
 
 | VM | Système | Sert à | Dès l'étape |
 |---|---|---|---|
-| `vigie-deb` | Debian 12 ou 13, sans interface graphique | Serveur SSH/SFTP/tunnels principal | 1 |
-| `vigie-win` | Windows Server (évaluation 180 j) ou Windows 11 Entreprise (évaluation 90 j) | Cible RDP, serveur OpenSSH Windows, test d'installation sur un Windows vierge | 0 (installeur), 8 (RDP) |
-| `vigie-desktop` | Ubuntu Desktop 24.04 | **Tester la version Linux de Vigie** (.deb, AppImage) et xfreerdp | 0 |
+| `younji-deb` | Debian 12 ou 13, sans interface graphique | Serveur SSH/SFTP/tunnels principal | 1 |
+| `younji-win` | Windows Server (évaluation 180 j) ou Windows 11 Entreprise (évaluation 90 j) | Cible RDP, serveur OpenSSH Windows, test d'installation sur un Windows vierge | 0 (installeur), 8 (RDP) |
+| `younji-desktop` | Ubuntu Desktop 24.04 | **Tester la version Linux de Younji** (.deb, AppImage) et xfreerdp | 0 |
 
-> Ton PC est sous Windows : sans `vigie-desktop`, la version Linux de l'application ne serait jamais testée en conditions réelles.
+> Ton PC est sous Windows : sans `younji-desktop`, la version Linux de l'application ne serait jamais testée en conditions réelles.
 > Pour l'étape 11, prévois une **YubiKey** (ou une autre clé FIDO2), branchée sur ton PC, côté client.
 
-## 3. Préparer `vigie-deb`
+## 3. Préparer `younji-deb`
 
 ```bash
 sudo apt update && sudo apt install -y openssh-server libpam-google-authenticator python3
@@ -53,10 +53,10 @@ Match Group sftponly
 ```bash
 # Clé de test pour testkey : génère une paire DÉDIÉE au lab sur ton PC,
 # HORS du dossier du projet (sinon elle pourrait être commitée ou lue par Claude Code) :
-#   mkdir ~/.vigie-lab ; ssh-keygen -t ed25519 -f ~/.vigie-lab/vigie_test_ed25519 -C vigie-lab
+#   mkdir ~/.younji-lab ; ssh-keygen -t ed25519 -f ~/.younji-lab/younji_test_ed25519 -C younji-lab
 # puis copie la partie .pub sur la VM :
 sudo install -d -m 700 -o testkey -g testkey /home/testkey/.ssh
-sudo install -m 600 -o testkey -g testkey vigie_test_ed25519.pub /home/testkey/.ssh/authorized_keys
+sudo install -m 600 -o testkey -g testkey younji_test_ed25519.pub /home/testkey/.ssh/authorized_keys
 
 # 2FA pour test2fa : se connecter en tant que test2fa, puis lancer :
 google-authenticator -t -d -f -r 3 -R 30 -w 3   # scanner le QR code dans une appli TOTP
@@ -85,27 +85,27 @@ python3 -m http.server 8080 --bind 127.0.0.1   # joignable seulement depuis la V
 ```
 
 **Tester le changement de clé d'hôte (HKY-02)** : après un snapshot, lance
-`sudo rm /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo systemctl restart ssh`, puis reconnecte-toi avec Vigie : la connexion doit être refusée. Restaure ensuite le snapshot.
+`sudo rm /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo systemctl restart ssh`, puis reconnecte-toi avec Younji : la connexion doit être refusée. Restaure ensuite le snapshot.
 
-**Comparer une empreinte** : `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` sur la VM doit afficher la même empreinte `SHA256:…` que Vigie.
+**Comparer une empreinte** : `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` sur la VM doit afficher la même empreinte `SHA256:…` que Younji.
 
-## 4. Préparer `vigie-win`
+## 4. Préparer `younji-win`
 - Activer le Bureau à distance avec NLA. Créer un compte local `testrdp`.
 - (Optionnel) Installer le serveur OpenSSH (Paramètres → Fonctionnalités facultatives) pour tester SSH vers Windows et PowerShell à distance.
-- Snapshot `base-propre` **avant** d'y installer Vigie, pour tester l'installeur sur un Windows vierge (SmartScreen, WebView2).
+- Snapshot `base-propre` **avant** d'y installer Younji, pour tester l'installeur sur un Windows vierge (SmartScreen, WebView2).
 
-## 5. Préparer `vigie-desktop`
+## 5. Préparer `younji-desktop`
 - Ubuntu Desktop 24.04 avec `freerdp3-x11` (ou `freerdp2-x11`) installé.
 - Sert à installer le `.deb` ou l'`AppImage` produits par `build.yml` et à refaire le plan de test de l'étape sous Linux.
 
 ## 6. Tests d'intégration en local
 Crée `.env.test` à la racine du projet (ignoré par git) :
 ```
-VIGIE_TEST_SSH_HOST=192.168.x.x
-VIGIE_TEST_SSH_PORT=22
-VIGIE_TEST_SSH_USER=testpwd
-VIGIE_TEST_SSH_PASSWORD=...
-VIGIE_TEST_SSH_KEY_USER=testkey
-VIGIE_TEST_SSH_KEY_PATH=C:/Users/<toi>/.vigie-lab/vigie_test_ed25519
+YOUNJI_TEST_SSH_HOST=192.168.x.x
+YOUNJI_TEST_SSH_PORT=22
+YOUNJI_TEST_SSH_USER=testpwd
+YOUNJI_TEST_SSH_PASSWORD=...
+YOUNJI_TEST_SSH_KEY_USER=testkey
+YOUNJI_TEST_SSH_KEY_PATH=C:/Users/<toi>/.younji-lab/younji_test_ed25519
 ```
 Puis lance `npm run test:integration`. Utilise une **clé dédiée aux tests**, jamais ta clé personnelle.

@@ -17,7 +17,7 @@ export interface SettingsState {
 }
 
 /** Clé de stockage local. Ces préférences ne contiennent aucune donnée sensible. */
-export const SETTINGS_STORAGE_KEY = 'vigie.settings';
+export const SETTINGS_STORAGE_KEY = 'younji.settings';
 
 /**
  * Accès à localStorage qui ne lève jamais d'exception (stockage désactivé ou plein) :

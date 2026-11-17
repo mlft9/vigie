@@ -1,7 +1,7 @@
-# Cahier des charges — Vigie
+# Cahier des charges — Younji
 
 > Client SSH / SFTP / RDP de bureau, dans l'esprit de MobaXterm et Termius.
-> La vigie est le guetteur en haut du mât, qui surveille l'horizon : le nom porte l'ambition sécurité du projet (voir `docs/DECISIONS.md`, ADR-014).
+> Younji (prononcé « younji ») est un nom inventé, libre en tant que marque dans le domaine logiciel. Il remplace « Vigie », déjà déposé (voir `docs/DECISIONS.md`, ADR-017).
 
 | | |
 |---|---|

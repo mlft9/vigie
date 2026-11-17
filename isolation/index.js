@@ -16,7 +16,7 @@
   var ALLOWED_COMMANDS = Object.freeze(['app_info']);
 
   /** Nom volontairement absent du cœur : un appel refusé échoue avec une erreur. */
-  var DENIED_COMMAND = 'vigie_isolation_denied';
+  var DENIED_COMMAND = 'younji_isolation_denied';
 
   function isAllowed(cmd) {
     return typeof cmd === 'string' && ALLOWED_COMMANDS.indexOf(cmd) !== -1;
@@ -37,7 +37,7 @@
   }
 
   Object.defineProperty(root, '__TAURI_ISOLATION_HOOK__', { value: hook });
-  Object.defineProperty(root, '__VIGIE_ISOLATION__', {
+  Object.defineProperty(root, '__YOUNJI_ISOLATION__', {
     value: Object.freeze({ allowedCommands: ALLOWED_COMMANDS, deniedCommand: DENIED_COMMAND }),
   });
 })(window);

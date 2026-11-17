@@ -128,8 +128,8 @@ describe('configuration de la fenêtre et de la WebView', () => {
   });
 
   it('garde le nom et l’identifiant définis par ADR-014', () => {
-    expect(config.productName).toBe('Vigie');
-    expect(config.identifier).toBe('io.github.mlft9.vigie');
+    expect(config.productName).toBe('Younji');
+    expect(config.identifier).toBe('io.github.mlft9.younji');
   });
 });
 
@@ -160,7 +160,7 @@ describe('capabilities', () => {
   });
 
   it('accordent uniquement des commandes de la liste blanche de l’isolation', () => {
-    const allowed = loadIsolation().__VIGIE_ISOLATION__.allowedCommands;
+    const allowed = loadIsolation().__YOUNJI_ISOLATION__.allowedCommands;
     const appPermissions = permissionIds.filter((id) => !id.includes(':'));
     for (const id of appPermissions) {
       expect(id, id).toMatch(/^allow-[a-z0-9-]+$/);
@@ -169,7 +169,7 @@ describe('capabilities', () => {
   });
 
   it('build.rs, la liste blanche et les capabilities déclarent les mêmes commandes', () => {
-    const allowed = [...loadIsolation().__VIGIE_ISOLATION__.allowedCommands].sort();
+    const allowed = [...loadIsolation().__YOUNJI_ISOLATION__.allowedCommands].sort();
     expect(buildRsCommands().sort()).toEqual(allowed);
     const granted = permissionIds
       .filter((id) => id.startsWith('allow-'))

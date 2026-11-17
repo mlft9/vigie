@@ -1,4 +1,4 @@
-# AGENTS.md — Vigie
+# AGENTS.md — Younji
 
 Client SSH / SFTP / RDP de bureau pour Windows et Linux, dans l'esprit de MobaXterm et Termius.
 Projet personnel / portfolio orienté **cybersécurité** : la sécurité est une exigence de premier rang, pas une finition.

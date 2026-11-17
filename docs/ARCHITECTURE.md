@@ -4,7 +4,7 @@
 
 ## 1. Vue d'ensemble
 
-Vigie est une application **Tauri 2**. Elle tourne en deux parties :
+Younji est une application **Tauri 2**. Elle tourne en deux parties :
 - **Le cœur Rust** (processus principal) : il détient les secrets, ouvre les connexions réseau, lit et écrit les fichiers.
 - **La WebView** (WebView2 sous Windows, WebKitGTK sous Linux) : elle affiche l'interface React. Elle est considérée comme **non fiable**. Elle demande, le cœur valide et exécute.
 
@@ -126,7 +126,7 @@ sequenceDiagram
             ACL-->>IPC: refus
         end
     else commande hors liste
-        ISO->>ACL: vigie_isolation_denied, sans charge utile
+        ISO->>ACL: younji_isolation_denied, sans charge utile
         ACL-->>IPC: erreur (commande inexistante)
     end
     IPC-->>UI: résultat ou { code } normalisé
@@ -199,19 +199,19 @@ sequenceDiagram
 
 | Fichier | Contenu | Protection | Disponible |
 |---|---|---|---|
-| `vault.vigie` | Hôtes, groupes, identités, clés, snippets, tunnels | Chiffré (voir `SECURITE.md`) | Étape 2 |
-| `vault.vigie.bak` | Version précédente du coffre | Chiffré | Étape 2 |
+| `vault.younji` | Hôtes, groupes, identités, clés, snippets, tunnels | Chiffré (voir `SECURITE.md`) | Étape 2 |
+| `vault.younji.bak` | Version précédente du coffre | Chiffré | Étape 2 |
 | `known_hosts` | Clés d'hôte acceptées (format OpenSSH) | En clair, permissions 0600. Pas de secret, mais l'intégrité compte. | Étape 1 |
 | `settings.json` | Langue, thème, police, délai de verrouillage | En clair, **aucune donnée sensible** (il doit être lisible avant le déverrouillage) | Étape 2 |
 
 > Point à trancher à l'étape 2 : faut-il déplacer `known_hosts` dans le coffre ? Ce serait plus confidentiel (on ne verrait plus la liste des serveurs), mais il faudrait déverrouiller pour vérifier une clé d'hôte.
 
-**Préférences (provisoire)** : jusqu'à l'étape 2, la langue et le thème sont stockés dans le `localStorage` de la WebView (clé `vigie.settings`). Les valeurs relues sont validées et toute valeur inattendue est ignorée. Elles migreront vers `settings.json`, géré par le backend.
+**Préférences (provisoire)** : jusqu'à l'étape 2, la langue et le thème sont stockés dans le `localStorage` de la WebView (clé `younji.settings`). Les valeurs relues sont validées et toute valeur inattendue est ignorée. Elles migreront vers `settings.json`, géré par le backend.
 
 ### Journaux
 - Dossier `app_log_dir` de Tauri (`%LOCALAPPDATA%\<identifier>\logs\` sous Windows, `~/.local/share/<identifier>/logs/` sous Linux), créé en 0700 sous Linux.
-- Fichiers `vigie.<date>.log`, rotation quotidienne, 7 fichiers au plus. En développement, les journaux sont aussi affichés sur la console. Si le dossier est inutilisable, repli sur la console (jamais sur un dossier temporaire partagé).
-- `VIGIE_LOG` (`error` à `trace`, `info` par défaut) ne règle que le niveau du **code de Vigie**. Les dépendances restent plafonnées à `warn`, pour qu'un niveau élevé ne fasse jamais journaliser des paquets réseau ou des arguments IPC.
+- Fichiers `younji.<date>.log`, rotation quotidienne, 7 fichiers au plus. En développement, les journaux sont aussi affichés sur la console. Si le dossier est inutilisable, repli sur la console (jamais sur un dossier temporaire partagé).
+- `YOUNJI_LOG` (`error` à `trace`, `info` par défaut) ne règle que le niveau du **code de Younji**. Les dépendances restent plafonnées à `warn`, pour qu'un niveau élevé ne fasse jamais journaliser des paquets réseau ou des arguments IPC.
 - Aucun secret, aucun contenu de terminal ni de fichier transféré (`SECURITE.md` §6).
 
 ## 5. Gestion des erreurs

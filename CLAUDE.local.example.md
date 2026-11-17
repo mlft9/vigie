@@ -8,9 +8,9 @@
 - Shell utilisé dans Claude Code : PowerShell / Git Bash *(rayer la mention inutile)*
 
 ## Lab Proxmox (adresses seulement)
-- `vigie-deb` : 192.168.x.x (SSH 22)
-- `vigie-win` : 192.168.x.x (RDP 3389)
-- `vigie-desktop` : 192.168.x.x
+- `younji-deb` : 192.168.x.x (SSH 22)
+- `younji-win` : 192.168.x.x (RDP 3389)
+- `younji-desktop` : 192.168.x.x
 
 ## Préférences
 - *(ex. « Propose-moi toujours deux options d'interface avant d'en coder une »)*

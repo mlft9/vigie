@@ -6,7 +6,7 @@ import { loadIsolation } from './load-isolation';
 describe("hook d'isolation", () => {
   const isolation = loadIsolation();
   const hook = isolation.__TAURI_ISOLATION_HOOK__;
-  const { deniedCommand } = isolation.__VIGIE_ISOLATION__;
+  const { deniedCommand } = isolation.__YOUNJI_ISOLATION__;
 
   it('laisse passer une commande autorisée sans la modifier', () => {
     const message = { cmd: 'app_info', callback: 1, error: 2, payload: {}, options: {} };
@@ -37,7 +37,7 @@ describe("hook d'isolation", () => {
   );
 
   it('ne permet pas de modifier la liste blanche', () => {
-    const list = isolation.__VIGIE_ISOLATION__.allowedCommands as string[];
+    const list = isolation.__YOUNJI_ISOLATION__.allowedCommands as string[];
     expect(() => {
       list.push('plugin:shell|execute');
     }).toThrow();

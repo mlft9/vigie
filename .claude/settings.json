@@ -92,6 +92,8 @@
       "Read(./.env.*)",
       "Read(./**/*.key)",
       "Read(./**/*.pem)",
+      "Read(./**/younji_test_*)",
+      "Read(~/.younji-lab/**)",
       "Read(./**/vigie_test_*)",
       "Read(~/.vigie-lab/**)",
       "Bash(git push --force *)",
