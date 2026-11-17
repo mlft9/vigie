@@ -97,8 +97,26 @@ describe.each([
 });
 
 describe('CSP de production', () => {
-  it("n'autorise pas les styles en ligne (aucun besoin à ce jour)", () => {
+  it("n'autorise pas les attributs style en ligne", () => {
     expect(sources(security.csp, 'style-src')).toEqual(["'self'"]);
+    expect(security.csp['style-src-attr']).toBeUndefined();
+  });
+
+  it('autorise les balises <style> dynamiques de xterm.js, et rien de plus (ADR-018)', () => {
+    expect(sources(security.csp, 'style-src-elem')).toEqual(["'self'", "'unsafe-inline'"]);
+  });
+});
+
+describe.each([
+  ['CSP de production', security.csp],
+  ['CSP de développement', security.devCsp],
+])('%s : styles', (_, csp) => {
+  it("n'utilise 'unsafe-inline' que pour les styles", () => {
+    for (const directive of Object.keys(csp)) {
+      if (sources(csp, directive).includes("'unsafe-inline'")) {
+        expect(['style-src', 'style-src-elem'], directive).toContain(directive);
+      }
+    }
   });
 });
 
