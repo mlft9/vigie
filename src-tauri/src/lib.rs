@@ -4,7 +4,9 @@
 mod commands;
 mod error;
 mod logging;
+mod navigation;
 
+use tauri::webview::NewWindowResponse;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Nom de l'application côté Rust (ADR-014). Seule autre source : `productName` dans
@@ -27,10 +29,31 @@ pub fn run() {
                 "démarrage de {APP_NAME}"
             );
 
+            // Le serveur Vite n'est autorisé qu'en développement.
+            let dev_url = if cfg!(dev) {
+                app.config().build.dev_url.clone()
+            } else {
+                None
+            };
+
             // La fenêtre est créée ici plutôt que dans la configuration pour que son titre
-            // vienne de APP_NAME. Elle ne charge que le contenu embarqué de l'application.
+            // vienne de APP_NAME. Elle ne charge que le contenu embarqué de l'application,
+            // ne peut pas naviguer ailleurs et ne peut pas ouvrir d'autre fenêtre.
             WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("index.html".into()))
                 .title(APP_NAME)
+                .on_navigation(move |url| {
+                    let allowed = navigation::is_allowed_navigation(url, dev_url.as_ref());
+                    if !allowed {
+                        // Seul le schéma est journalisé : l'adresse complète pourrait contenir
+                        // des données sensibles.
+                        tracing::warn!(scheme = url.scheme(), "navigation refusée");
+                    }
+                    allowed
+                })
+                .on_new_window(|url, _| {
+                    tracing::warn!(scheme = url.scheme(), "ouverture de fenêtre refusée");
+                    NewWindowResponse::Deny
+                })
                 .inner_size(1200.0, 780.0)
                 .min_inner_size(800.0, 500.0)
                 .center()
