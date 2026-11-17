@@ -1,0 +1,40 @@
+# Dépendances et compilation
+node_modules/
+dist/
+target/
+src-tauri/target/
+src-tauri/gen/schemas/
+coverage/
+*.tsbuildinfo
+
+# Secrets et configuration locale — ne jamais commiter
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+vigie_test_*
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.vigie
+*.vigie.bak
+*.vigie-backup
+
+# Claude Code : fichiers personnels
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Journaux et fichiers temporaires
+*.log
+logs/
+*.tmp
+
+# Systèmes et éditeurs
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
