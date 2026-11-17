@@ -103,6 +103,13 @@
   --color-sidebar-border: var(--sidebar-border);
 }
 
+/* Iframe du modèle d'isolation Tauri (ADR-015). Tauri la masque avec une balise <style> en ligne,
+   que notre CSP (style-src 'self') bloque volontairement : on la masque donc ici, depuis la feuille
+   de style embarquée, plutôt que d'assouplir la CSP. */
+#__tauri_isolation__ {
+  display: none !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -162,3 +162,11 @@ describe('capabilities', () => {
     expect(granted).toEqual(allowed);
   });
 });
+
+describe('feuille de style', () => {
+  it("masque l'iframe d'isolation sans assouplir la CSP", () => {
+    expect(read('src/index.css')).toMatch(
+      /#__tauri_isolation__\s*\{\s*display:\s*none !important;/,
+    );
+  });
+});
