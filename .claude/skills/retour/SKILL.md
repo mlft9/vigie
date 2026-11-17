@@ -1,6 +1,6 @@
 ---
 name: retour
-description: Traite les retours de test du porteur sur l'étape en cours de Vigie (bugs, remarques d'ergonomie, validations) et corrige avec des tests de non-régression.
+description: Traite les retours de test du porteur sur l'étape en cours de Younji (bugs, remarques d'ergonomie, validations) et corrige avec des tests de non-régression.
 argument-hint: [retours de test en texte libre]
 disable-model-invocation: true
 ---

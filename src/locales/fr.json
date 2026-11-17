@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Vigie",
+    "name": "Younji",
     "tagline": "Client SSH, SFTP et RDP"
   },
   "nav": {
@@ -29,14 +29,14 @@
     "appearance": "Apparence",
     "language": {
       "label": "Langue",
-      "description": "Par défaut, Vigie suit la langue du système.",
+      "description": "Par défaut, Younji suit la langue du système.",
       "system": "Langue du système",
       "fr": "Français",
       "en": "English"
     },
     "theme": {
       "label": "Thème",
-      "description": "Par défaut, Vigie suit le thème du système.",
+      "description": "Par défaut, Younji suit le thème du système.",
       "system": "Thème du système",
       "light": "Clair",
       "dark": "Sombre"

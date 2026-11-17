@@ -18,9 +18,10 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 011 | Pas de synchronisation, export/import chiffré uniquement | Acceptée |
 | 012 | Déverrouillage : mot de passe maître + système en option | Acceptée |
 | 013 | Développement assisté par Claude Code | Acceptée |
-| 014 | Nom définitif : Vigie | Acceptée |
+| 014 | Nom définitif : Vigie | Remplacée par ADR-017 |
 | 015 | Modèle d'isolation Tauri et commandes soumises aux capabilities | Acceptée |
 | 016 | Dépôt public dès l'étape 0 | Acceptée |
+| 017 | Nouveau nom : Younji | Acceptée |
 
 ---
 
@@ -109,7 +110,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 **Conséquences** : rythme soutenu ; la revue de sécurité systématique et les tests compensent le risque d'erreurs plausibles mais fausses ; le processus est documenté et assumé dans le README.
 
 ## ADR-014 — Nom définitif : Vigie
-**Statut** : Acceptée (17/11/2026) — remplace ADR-010
+**Statut** : Remplacée par ADR-017 (17/11/2026). Acceptée le 17/11/2026, remplaçait ADR-010.
 **Contexte** : le nom de code « Relais » devait être remplacé avant la publication. Le choisir avant d'écrire la moindre ligne de code évite toute migration du dossier de données.
 **Décision** : le projet s'appelle **Vigie** (le guetteur en haut du mât, qui surveille l'horizon), en cohérence avec l'orientation sécurité. Dépôt `mlft9/vigie`, identifiant de bundle `io.github.mlft9.vigie`. La règle de centralisation d'ADR-010 est conservée : `productName` / `identifier` dans `tauri.conf.json`, clé i18n `app.name`, constante Rust `APP_NAME`. Fichiers de données : `vault.vigie`, sauvegardes `.vigie-backup`. Variables de test : `VIGIE_TEST_*`.
 **Alternatives écartées** : Poterne, Amarre, Escale, Nacre (libres mais moins parlants) ; Conque/Conch, Pagure, Carapace, Bastion (déjà utilisés par des logiciels proches).
@@ -153,3 +154,24 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Tout ce qui est poussé devient public et durable (historique, artefacts, journaux de CI) : la règle « aucun secret dans le dépôt ni dans les journaux » prend encore plus d'importance.
 - Les contributions externes deviennent possibles : `pull_request_target` reste interdit, et les workflows n'exposent aucun secret aux PR venant de forks.
 - La signature de code via la SignPath Foundation (projets open source) pourra être demandée plus tôt, sans attendre l'étape 13.
+
+## ADR-017 — Nouveau nom : Younji
+**Statut** : Acceptée (17/11/2026), décision du porteur. Remplace ADR-014.
+**Contexte** : la vérification de marque prévue par ADR-014 et ADR-016 a été faite le 17/11/2026 (TMview, recherche « Contient : VIGIE »). Le signe « VIGIE » est enregistré à l'identique en **classe 9** (logiciels) et/ou **42** (services informatiques) par plusieurs titulaires actifs : en France (n° 3652191, Lacroix Traffic, classe 9 ; n° 4726295, Sellor, classes 9 et 42), dans l'Union européenne (n° 019097956, ViGIE Solutions, classes 9 et 42, en cours d'enregistrement) et en Allemagne. La marque française « VIGIE CYBER » vise en outre le domaine de la cybersécurité. Pour un logiciel public et diffusé, le risque de contrefaçon n'est pas acceptable.
+**Décision** : le projet s'appelle **Younji** (prononcé « younji »), un nom inventé.
+- Vérifications faites le 17/11/2026 : TMview « Contient : younji » ne renvoie que deux marques coréennes expirées en classe 6 ; aucun logiciel, application ni dépôt homonyme trouvé par recherche web.
+- Règle de centralisation d'ADR-010 et ADR-014 conservée : `productName` / `identifier` dans `tauri.conf.json`, clé i18n `app.name`, constante Rust `APP_NAME`.
+- Nouveaux identifiants : dépôt `mlft9/younji`, identifiant de bundle `io.github.mlft9.younji`, crate `younji` (bibliothèque `younji_lib`), variables `YOUNJI_LOG` et `YOUNJI_TEST_*`, fichiers `vault.younji` et `.younji-backup`, octets magiques `YNJV` (coffre) et `YNJB` (sauvegarde) dans `SECURITE.md` §3.
+- Icône provisoire : un « Y » (le mât et sa hune) surmonté d'un point (le guetteur).
+
+**Alternatives écartées** :
+- Garder « Vigie » : risque juridique (voir le contexte).
+- « Hungie » : libre comme marque, mais l'orthographe ne correspond pas à la prononciation voulue et évoque *hungry* en anglais.
+- Hune, Gabier, Poterne, Amarre : non retenus par le porteur.
+
+**Conséquences** :
+- Aucune migration : aucune version publiée, aucun utilisateur. Le changement d'identifiant déplace seulement le dossier de données de développement (`%LOCALAPPDATA%\io.github.mlft9.vigie`), qui peut être supprimé.
+- Les ADR et entrées du CHANGELOG antérieurs gardent le nom « Vigie » : c'est l'historique.
+- `.gitignore` et les règles `deny` de Claude Code gardent aussi les anciens motifs `vigie_test_*` / `~/.vigie-lab/`, pour protéger d'éventuelles clés de test déjà générées.
+- Le dépôt GitHub est renommé par le porteur ; GitHub redirige automatiquement l'ancienne adresse.
+- Avant toute diffusion commerciale ou tout gain de notoriété, envisager le dépôt de la marque « Younji » en classes 9 et 42.

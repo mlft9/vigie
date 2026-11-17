@@ -1,4 +1,4 @@
-//! Application Tauri de Vigie : elle ne fait que relier les commandes IPC aux crates métier
+//! Application Tauri de Younji : elle ne fait que relier les commandes IPC aux crates métier
 //! (ADR-004). Aucune logique métier ici.
 
 mod commands;
@@ -11,7 +11,7 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Nom de l'application côté Rust (ADR-014). Seule autre source : `productName` dans
 /// `tauri.conf.json` et la clé i18n `app.name`.
-pub const APP_NAME: &str = "Vigie";
+pub const APP_NAME: &str = "Younji";
 
 /// Étiquette de la fenêtre principale ; elle doit correspondre à `capabilities/main.json`.
 const MAIN_WINDOW: &str = "main";

@@ -1,6 +1,6 @@
 ---
 name: etape
-description: Démarre ou reprend une étape de la feuille de route de Vigie (docs/ROADMAP.md) en suivant le processus du projet, du plan jusqu'au plan de test manuel.
+description: Démarre ou reprend une étape de la feuille de route de Younji (docs/ROADMAP.md) en suivant le processus du projet, du plan jusqu'au plan de test manuel.
 argument-hint: [numéro-étape]
 disable-model-invocation: true
 ---

@@ -50,9 +50,9 @@ données du coffre (sérialisées) ────────► charge utile chif
 | Aléa | `rand::rngs::OsRng` uniquement |
 | Sérialisation | JSON via `serde`, avec un champ `schema_version` (simple à faire évoluer et à déboguer, la taille n'est pas un enjeu) |
 
-### 3.3 Format de fichier v1 (`vault.vigie`)
+### 3.3 Format de fichier v1 (`vault.younji`)
 ```
-"VIGV" (4) | version u16 = 1 | kdf_id u8 = 1 (Argon2id) | m_kib u32 | t u32 | p u32 | sel (16)
+"YNJV" (4) | version u16 = 1 | kdf_id u8 = 1 (Argon2id) | m_kib u32 | t u32 | p u32 | sel (16)
 | nonce_dek (24) | DEK chiffrée + tag (48)
 | nonce_data (24) | longueur u64 | données chiffrées + tag (16)
 ```
@@ -70,11 +70,11 @@ Entiers en little-endian. La longueur annoncée est vérifiée **avant toute all
 - Limite connue : Rust ne garantit pas l'absence de copies (swap, réallocations). On limite les copies, sans promettre l'impossible.
 
 ### 3.6 Écriture
-- Écriture atomique : fichier temporaire dans le même dossier, `fsync`, puis renommage par-dessus l'original (`tempfile::NamedTempFile::persist`). La version précédente devient `vault.vigie.bak`.
+- Écriture atomique : fichier temporaire dans le même dossier, `fsync`, puis renommage par-dessus l'original (`tempfile::NamedTempFile::persist`). La version précédente devient `vault.younji.bak`.
 - Permissions : 0600 pour les fichiers et 0700 pour le dossier sous Linux. Sous Windows, le profil utilisateur (`%APPDATA%`) suffit.
 
 ### 3.7 Export chiffré (étape 9)
-Même schéma, avec la magie `"VIGB"`, un **sel distinct** et une **phrase de passe distincte** du mot de passe maître. Un fichier altéré est rejeté (tag AEAD).
+Même schéma, avec la magie `"YNJB"`, un **sel distinct** et une **phrase de passe distincte** du mot de passe maître. Un fichier altéré est rejeté (tag AEAD).
 
 ## 4. Connexions
 
@@ -106,7 +106,7 @@ Même schéma, avec la magie `"VIGB"`, un **sel distinct** et une **phrase de pa
 - CSP stricte, aucun contenu distant, `withGlobalTauri: false`, capabilities minimales par fenêtre, pas de plugin `shell` exposé à l'interface. Détails dans `.claude/rules/tauri-config.md`.
 - **Modèle d'isolation Tauri** (iframe sandboxée qui intercepte l'IPC) : **activé** depuis l'étape 0 (ADR-015), avec une liste blanche de commandes (`isolation/index.js`). C'est une défense en profondeur **« au mieux »**, pas une barrière : un test sur build réel (17/11/2026) a montré qu'un script de la fenêtre principale qui intercepte `fetch` récupère la clé d'invocation et appelle une commande directement, sans passer par l'iframe (le nom de commande est dans l'URL, non authentifié). Les vraies barrières restent les **capabilities** et la **validation côté Rust** de chaque entrée. On n'accorde jamais une permission en comptant sur le filtrage de l'isolation, et on ne lui confie aucune validation de charge utile.
 - **Navigation** : la fenêtre principale ne peut naviguer que vers l'origine de l'application (et le serveur Vite en développement) ; l'ouverture de nouvelles fenêtres est refusée (`src-tauri/src/navigation.rs`). La CSP ne couvre pas la navigation de premier niveau.
-- **Journaux** : `VIGIE_LOG` ne règle que le niveau du code de Vigie ; les dépendances restent plafonnées à `warn`, pour qu'un niveau `trace` ne fasse jamais journaliser des paquets ou des arguments IPC.
+- **Journaux** : `YOUNJI_LOG` ne règle que le niveau du code de Younji ; les dépendances restent plafonnées à `warn`, pour qu'un niveau `trace` ne fasse jamais journaliser des paquets ou des arguments IPC.
 - **Commandes applicatives soumises aux capabilities** : chaque commande est déclarée dans `src-tauri/build.rs` et doit être accordée explicitement (`allow-<commande>`) dans une capability. Un test (`tests/security/tauri-config.test.ts`) vérifie la cohérence entre `build.rs`, la liste blanche de l'isolation et les capabilities, ainsi que les invariants de la CSP.
 
 ## 6. Fuites par effet de bord

@@ -33,7 +33,7 @@
 ## Environnement
 - Le porteur développe **nativement sous Windows** (pas WSL) et teste sur son **lab Proxmox** (VM Linux et Windows). Les infos locales (adresses des VM de test, etc.) sont dans `CLAUDE.local.md`, s'il existe.
 - Shell possible : PowerShell ou Git Bash. Écris des scripts npm portables (pas de commandes propres à bash dans `package.json`).
-- Les tests d'intégration SSH lisent leur cible dans des variables d'environnement (`VIGIE_TEST_*`). Ne mets jamais d'identifiants en dur.
+- Les tests d'intégration SSH lisent leur cible dans des variables d'environnement (`YOUNJI_TEST_*`). Ne mets jamais d'identifiants en dur.
 
 ## Vérifier avant d'affirmer
 - Avant d'utiliser une API de `russh`, `tauri`, `ironrdp` ou `xterm`, vérifie la version installée et sa documentation (docs.rs, v2.tauri.app). Ces API évoluent vite.

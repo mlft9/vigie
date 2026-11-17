@@ -1,7 +1,7 @@
 //! Garde de navigation de la fenêtre principale.
 //!
 //! La CSP ne contrôle pas la navigation de premier niveau : sans cette garde, un lien ou un
-//! script pourrait charger une page distante dans la fenêtre de Vigie (qui pourrait par exemple
+//! script pourrait charger une page distante dans la fenêtre de Younji (qui pourrait par exemple
 //! imiter la demande du mot de passe maître). Seule l'origine de l'application est autorisée ;
 //! les liens externes seront ouverts dans le navigateur du système (plugin `opener`, plus tard).
 

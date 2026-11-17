@@ -14,7 +14,7 @@ vi.mock('./lib/ipc', async (importOriginal) => {
 });
 
 function setup() {
-  vi.mocked(ipc.appInfo).mockResolvedValue({ name: 'Vigie', version: '0.1.0' });
+  vi.mocked(ipc.appInfo).mockResolvedValue({ name: 'Younji', version: '0.1.0' });
   return { user: userEvent.setup(), ...render(<App />) };
 }
 

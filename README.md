@@ -1,4 +1,4 @@
-# Vigie
+# Younji
 
 Client **SSH / SFTP / RDP** de bureau pour **Windows et Linux**, dans l'esprit de MobaXterm et Termius, avec la sécurité comme priorité.
 
@@ -46,12 +46,12 @@ Développe **nativement sous Windows**, pas dans WSL : c'est indispensable pour 
 - *(Optionnel)* [GitHub CLI](https://cli.github.com/) (`gh auth login`) pour que Claude Code puisse ouvrir des PR et lancer les compilations, toujours après ton accord
 
 ### 2. Créer le dépôt
-Sur GitHub, crée le dépôt **vide** `vigie` (sans README, licence ni .gitignore). Ensuite, dans ce dossier :
+Sur GitHub, crée le dépôt **vide** `younji` (sans README, licence ni .gitignore). Ensuite, dans ce dossier :
 ```powershell
 git init -b main
 git add .
 git commit -m "docs: cadrage initial du projet"
-git remote add origin https://github.com/mlft9/vigie.git
+git remote add origin https://github.com/mlft9/younji.git
 git push -u origin main
 ```
 

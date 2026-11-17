@@ -1,6 +1,6 @@
 ---
 name: revue-securite
-description: Lance une revue de sécurité ciblée de Vigie (diff en cours, un dossier ou un sujet précis) avec l'agent security-reviewer, puis propose les corrections.
+description: Lance une revue de sécurité ciblée de Younji (diff en cours, un dossier ou un sujet précis) avec l'agent security-reviewer, puis propose les corrections.
 argument-hint: [cible optionnelle : chemin, sujet ou "tout"]
 disable-model-invocation: true
 ---

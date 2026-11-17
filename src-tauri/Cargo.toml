@@ -1,5 +1,5 @@
 [package]
-name = "vigie"
+name = "younji"
 description = "Client SSH / SFTP / RDP de bureau"
 version.workspace = true
 edition.workspace = true
@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [lib]
-name = "vigie_lib"
+name = "younji_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]

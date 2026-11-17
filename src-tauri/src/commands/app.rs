@@ -32,7 +32,7 @@ mod tests {
     #[test]
     fn returns_name_and_version() {
         let json = serde_json::to_value(current_app_info()).unwrap();
-        assert_eq!(json["name"], "Vigie");
+        assert_eq!(json["name"], "Younji");
         assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(json.as_object().unwrap().len(), 2);
     }
