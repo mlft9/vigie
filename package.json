@@ -18,7 +18,7 @@
     "test:watch": "node scripts/vitest.mjs",
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings",
     "test:rust": "cargo test --workspace",
-    "test:integration": "cargo test --workspace -- --ignored",
+    "test:integration": "node scripts/integration.mjs",
     "audit": "cargo deny check && npm audit --omit=dev --audit-level=high",
     "check": "npm run lint && npm run test && npm run check:rust && npm run test:rust"
   },

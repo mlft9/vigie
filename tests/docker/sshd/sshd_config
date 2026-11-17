@@ -1,0 +1,11 @@
+# Configuration des tests : mot de passe pour testpwd, clé uniquement pour testkey.
+PermitRootLogin no
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+AllowUsers testpwd testkey
+AllowAgentForwarding no
+X11Forwarding no
+LogLevel VERBOSE
+
+Match User testkey
+    AuthenticationMethods publickey
