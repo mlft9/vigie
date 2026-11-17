@@ -42,7 +42,13 @@ export default defineConfig([
         {
           paths: [
             {
-              name: '@tauri-apps/api/core',
+              name: '@tauri-apps/api',
+              message: 'Passer par les fonctions typées de src/lib/ipc.ts.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['@tauri-apps/api/*', '@tauri-apps/plugin-*'],
               message: 'Passer par les fonctions typées de src/lib/ipc.ts.',
             },
           ],

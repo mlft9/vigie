@@ -82,12 +82,14 @@ describe.each([
   it("ne charge aucune ressource distante (seule l'IPC locale est joignable)", () => {
     for (const [directive, value] of Object.entries(csp)) {
       for (const source of value.split(/\s+/).filter(Boolean)) {
+        // Chaque source non mot-clé n'est admise que dans la directive où elle est utile.
         const allowed =
           source.startsWith("'") ||
-          source === 'data:' ||
-          source === 'ipc:' ||
-          source === 'http://ipc.localhost' ||
-          (csp === security.devCsp && source === 'ws://127.0.0.1:1420');
+          (source === 'data:' && ['img-src', 'font-src'].includes(directive)) ||
+          (['ipc:', 'http://ipc.localhost'].includes(source) && directive === 'connect-src') ||
+          (csp === security.devCsp &&
+            source === 'ws://127.0.0.1:1420' &&
+            directive === 'connect-src');
         expect(allowed, `${directive} : source non autorisée « ${source} »`).toBe(true);
       }
     }
@@ -112,10 +114,17 @@ describe('configuration de la fenêtre et de la WebView', () => {
     expect(security.pattern).toEqual({ use: 'isolation', options: { dir: '../isolation' } });
   });
 
-  it('ne charge aucune URL distante dans une fenêtre déclarée', () => {
-    for (const window of config.app.windows) {
-      expect(window.url ?? 'index.html').not.toMatch(/^[a-z]+:/i);
-    }
+  it('crée la seule fenêtre côté Rust, sur le contenu embarqué, avec une garde de navigation', () => {
+    // Aucune fenêtre déclarée dans la configuration : la fenêtre principale est créée dans lib.rs.
+    expect(config.app.windows).toEqual([]);
+    const lib = read('src-tauri/src/lib.rs');
+    expect(lib).toContain('WebviewUrl::App(');
+    expect(lib).not.toMatch(/WebviewUrl::(External|CustomProtocol)/);
+    expect(lib).toContain('.on_navigation(');
+    expect(lib).toMatch(/\.on_new_window\([\s\S]*?NewWindowResponse::Deny/);
+    // L'étiquette de la fenêtre correspond à la capability.
+    const label = /const MAIN_WINDOW: &str = "([^"]+)";/.exec(lib)?.[1];
+    expect(capabilities.flatMap((c) => c.windows)).toEqual([label]);
   });
 
   it('garde le nom et l’identifiant définis par ADR-014', () => {
@@ -141,6 +150,13 @@ describe('capabilities', () => {
       expect(id, id).not.toMatch(/^(shell|fs|process|http|updater):/);
       expect(id, id).not.toMatch(/:allow-(execute|spawn)$/);
     }
+  });
+
+  it('correspondent exactement à la liste attendue (tout ajout se fait délibérément ici)', () => {
+    // Liste blanche exacte : une permission ajoutée dans une capability fait échouer ce test
+    // tant qu'elle n'est pas ajoutée ici, après revue de sécurité.
+    const EXPECTED_PERMISSIONS = ['allow-app-info'];
+    expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });
 
   it('accordent uniquement des commandes de la liste blanche de l’isolation', () => {

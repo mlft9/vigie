@@ -46,3 +46,13 @@ describe("hook d'isolation", () => {
     );
   });
 });
+
+describe("protection du hook d'isolation", () => {
+  it('ne peut être ni remplacé ni supprimé', () => {
+    const isolation = loadIsolation();
+    const original = isolation.__TAURI_ISOLATION_HOOK__;
+    expect(Reflect.set(isolation, '__TAURI_ISOLATION_HOOK__', () => null)).toBe(false);
+    expect(Reflect.deleteProperty(isolation, '__TAURI_ISOLATION_HOOK__')).toBe(false);
+    expect(isolation.__TAURI_ISOLATION_HOOK__).toBe(original);
+  });
+});
