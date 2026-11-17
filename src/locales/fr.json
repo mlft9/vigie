@@ -86,7 +86,7 @@
     "unknown": {
       "title": "Hôte inconnu",
       "intro": "C'est la première connexion à {{host}}. Younji ne peut pas encore garantir que ce serveur est bien celui que vous croyez.",
-      "verify": "Comparez cette empreinte avec celle du serveur (commande ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub sur le serveur) avant d'accepter. Une fois acceptée, la clé est mémorisée.",
+      "verify": "Comparez cette empreinte avec celle du serveur avant d'accepter : sur le serveur, ssh-keygen -lf /etc/ssh/ssh_host_<type>_key.pub, où <type> correspond à l'algorithme affiché (ed25519, ecdsa ou rsa). Une fois acceptée, la clé est mémorisée.",
       "reject": "Refuser",
       "accept": "Accepter et se connecter"
     },

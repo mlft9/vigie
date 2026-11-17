@@ -86,7 +86,7 @@
     "unknown": {
       "title": "Unknown host",
       "intro": "This is the first connection to {{host}}. Younji cannot yet guarantee that this server is the one you expect.",
-      "verify": "Compare this fingerprint with the server's (run ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on the server) before accepting. Once accepted, the key is remembered.",
+      "verify": "Compare this fingerprint with the server's before accepting: on the server, run ssh-keygen -lf /etc/ssh/ssh_host_<type>_key.pub, where <type> matches the algorithm shown (ed25519, ecdsa or rsa). Once accepted, the key is remembered.",
       "reject": "Reject",
       "accept": "Accept and connect"
     },
