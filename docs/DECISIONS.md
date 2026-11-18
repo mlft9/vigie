@@ -38,6 +38,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 031 | Authentification en plusieurs méthodes et keyboard-interactive | Acceptée, prise en autonomie, à relire |
 | 032 | Clés générées dans le coffre, sans passphrase ni export de la clé privée | Acceptée, prise en autonomie, à relire ; écart à KEY-01 à trancher |
 | 033 | Déploiement de clé par commande `sh` constante et entrée standard | Acceptée, prise en autonomie, à relire |
+| 034 | SFTP sur la connexion du terminal, dossiers locaux désignés par identifiant, éditeur imposé | Acceptée, prise en autonomie, à relire |
 
 ---
 
@@ -421,3 +422,40 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Serveurs Unix uniquement. Un serveur Windows (shell `cmd` ou PowerShell) devrait échouer avec `ssh.deploy_failed` : à confirmer sur le lab.
 - Cas limite : un Windows avec `sh` dans le PATH (Git for Windows) pourrait réussir le déploiement dans `%USERPROFILE%\.ssh\authorized_keys`, fichier ignoré par OpenSSH pour les comptes administrateurs (`administrators_authorized_keys`). La connexion par clé échouerait alors sans erreur au déploiement.
 - Le passage à SFTP (étape 4) pourra être étudié dans un nouvel ADR.
+
+## ADR-034 — SFTP sur la connexion du terminal, dossiers locaux désignés par identifiant, éditeur imposé
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur. Prolonge ADR-020 (chemins locaux gardés par le cœur) et ADR-026 (fermeture au verrouillage).
+**Contexte** : SFTP-01 à SFTP-05. Le SFTP écrit sur le disque local des noms choisis par le serveur (menace M3), et l'interface, non fiable (M4), pilote des lectures et écritures de fichiers locaux. Ouvrir un fichier distant « pour l'éditer » peut aussi l'exécuter si l'on passe par l'application associée à son extension.
+**Décision** :
+- **SFTP sur la connexion du terminal** : un canal `sftp` est ouvert sur la session déjà authentifiée (`SessionHandle::open_sftp`), sans nouvelle authentification ni 2FA redemandée, avec la même clé d'hôte vérifiée. Le client SFTP se ferme avec la session, au verrouillage et au rechargement de l'interface. L'onglet double panneau dépend donc d'un terminal connecté.
+- **Dossiers locaux (« racines ») choisis par le cœur** : la boîte de dialogue du système est ouverte par le cœur (`local_pick_root`), qui garde le chemin et renvoie un identifiant et un nom. **Aucun chemin local absolu n'est accepté de l'IPC.** Les chemins relatifs à une racine sont canonicalisés et confinés (`LocalRoot::resolve`). Les racines sont oubliées au verrouillage. `RootPolicy` refuse comme racine :
+  - la racine d'un disque ou du système de fichiers ;
+  - le dossier personnel entier et ses ancêtres ;
+  - `~/.ssh` et ce qu'il contient ;
+  - les dossiers de données de l'application (data, local data, cache, config, log), coffre et copies d'édition compris.
+- **Panneau local sans suppression ni renommage**, et aucune politique de conflit acceptée de l'IPC : tout transfert démarre en « demander », l'écrasement ne se décide qu'à la question posée pendant le transfert.
+- **Éditeur imposé**, jamais l'application associée ni une détection du type par le contenu (`src-tauri/src/editor.rs`) ; le fichier est passé en argument de processus, sans shell :
+  - Windows : Bloc-notes, depuis `System32` ;
+  - Linux : liste fixe d'éditeurs graphiques (`gnome-text-editor`, `gedit`, `kate`…), cherchés par chemin absolu dans `/usr/bin`, `/usr/local/bin` et `/bin`, jamais dans le `PATH` ; aucun trouvé : `editor.open_failed`. Le plan prévoyait `xdg-open` sur une copie `.txt` : écarté, car `xdg-open` suit les associations de l'utilisateur et peut détecter le type par le contenu ;
+  - macOS : `open -e` (TextEdit).
+  Un éditeur choisi par l'utilisateur est reporté.
+- **Gestionnaire natif de glisser-déposer de Tauri désactivé** (`disable_drag_drop_handler`) : il bloquait le glisser-déposer HTML5 entre les panneaux sous Windows et aurait exposé à l'interface les chemins des fichiers déposés. Seul le glisser-déposer interne (types MIME propres à Younji) est pris en charge ; les fichiers déposés depuis le système sont ignorés.
+- **Dépendance `russh-sftp` 3.0.1** (Apache-2.0), prévue par ADR-002. Son `SftpSession::read_dir` accumule toutes les entrées sans limite : les listages passent par `RawSftpSession`, avec nos bornes (`SECURITE.md` §4.2). Le contenu des fichiers passe par `SftpSession` (lectures et écritures en pipeline).
+- **Exception cargo-deny RUSTSEC-2026-0543** : `chrono` n'est plus maintenue (aucune vulnérabilité connue). Elle est transitive de `russh-sftp`, qui ne s'en sert que pour fabriquer des attributs côté serveur, code jamais appelé par le client. À retirer dès que `russh-sftp` s'en passe ; à réexaminer à chaque mise à jour.
+
+**Alternatives écartées** :
+- Connexion SFTP séparée : nouvelle authentification (2FA redemandée), seconde vérification de clé d'hôte, durée de vie distincte de la session.
+- Chemins locaux absolus fournis par l'interface : une interface compromise lirait ou écrirait n'importe quel fichier de l'utilisateur.
+- Suppression et renommage locaux : une interface compromise pourrait détruire des fichiers locaux.
+- Application associée ou `xdg-open` : un fichier distant `x.bat`, `x.js`, `x.desktop` ou un `README` contenant du HTML serait exécuté ou ouvert ailleurs qu'en édition.
+- `SftpSession::read_dir` : mémoire non bornée face à un serveur malveillant.
+
+**Conséquences et risques résiduels** :
+- Une interface compromise peut lire, créer et écraser des fichiers dans une racine autorisée (en répondant « écraser » à un conflit) tant que le coffre est déverrouillé. Une confirmation native de l'écrasement local, affichée par le cœur, est envisagée plus tard.
+- Un fichier distant écrasé par un envoi puis annulé n'est pas restaurable (pas de renommage atomique côté serveur ; seul un fichier **créé** par le transfert est supprimé à l'annulation).
+- Un téléchargement n'est pas plafonné par la taille annoncée : un fichier qui grossit pendant le transfert est légitime (journaux) ; l'annulation reste possible.
+- La détection de conflit d'édition repose sur la taille et la date distantes, précises à la seconde : deux modifications de même taille dans la même seconde passent inaperçues.
+- L'éditeur externe n'est pas fermé au verrouillage : la copie locale est supprimée et plus rien n'est renvoyé, mais la fenêtre de l'éditeur peut encore afficher le contenu.
+- Les comptes « SFTP seul » (`ForceCommand internal-sftp`) ne sont probablement pas utilisables proprement, faute de terminal : à vérifier sur le lab (`testsftp`).
+- Fichiers téléchargés en 0600 sous Linux, sans reprendre les droits distants (exécution comprise).
+- Sous Windows, les fichiers téléchargés portent la Mark-of-the-Web (`Zone.Identifier`, `ZoneId=3`) : SmartScreen et le mode protégé d'Office s'appliquent.

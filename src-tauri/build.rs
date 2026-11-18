@@ -41,6 +41,23 @@ fn main() {
             "key_generate",
             "key_export_public",
             "key_deploy",
+            "sftp_open",
+            "sftp_close",
+            "sftp_home",
+            "sftp_list",
+            "sftp_mkdir",
+            "sftp_rename",
+            "sftp_remove",
+            "sftp_chmod",
+            "sftp_download",
+            "sftp_upload",
+            "sftp_transfer_cancel",
+            "sftp_conflict_decision",
+            "sftp_edit",
+            "sftp_edit_close",
+            "sftp_edit_force",
+            "local_pick_root",
+            "local_list",
         ]));
 
     if let Err(error) = tauri_build::try_build(attributes) {

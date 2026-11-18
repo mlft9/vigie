@@ -201,3 +201,97 @@ export interface SettingsResponse {
   /** Aucun fichier encore écrit : reprendre les anciennes préférences éventuelles. */
   firstRun: boolean;
 }
+
+// ---------------------------------------------------------------------- SFTP (étape 4)
+
+/** Identifiant opaque d'un client SFTP, attribué par le cœur. */
+export type SftpId = number;
+/** Identifiant d'un transfert. */
+export type JobId = number;
+/** Identifiant opaque d'un dossier local choisi dans la boîte de dialogue du cœur. */
+export type LocalRootId = number;
+/** Identifiant d'une édition en cours. */
+export type EditId = number;
+
+export type EntryKind = 'file' | 'dir' | 'symlink' | 'other';
+
+/** Élément d'un dossier distant. `name` est le nom exact (à ne pas afficher tel quel). */
+export interface RemoteEntry {
+  name: string;
+  /** Nom affichable : caractères de contrôle et invisibles remplacés par le cœur. */
+  displayName: string;
+  /** Nom modifié pour l'affichage ou impropre à une écriture locale. */
+  suspicious: boolean;
+  kind: EntryKind;
+  size: number;
+  modified: number | null;
+  permissions: number | null;
+  /** Type de la cible d'un lien symbolique, si elle a pu être résolue. */
+  linkTarget: EntryKind | null;
+}
+
+export interface RemoteListing {
+  path: string;
+  entries: RemoteEntry[];
+  truncated: boolean;
+}
+
+export interface LocalEntry {
+  name: string;
+  kind: EntryKind;
+  size: number;
+  modified: number | null;
+}
+
+export interface LocalListing {
+  entries: LocalEntry[];
+  truncated: boolean;
+}
+
+/** Dossier local choisi : identifiant et nom, jamais le chemin. */
+export interface LocalRootRef {
+  id: LocalRootId;
+  name: string;
+}
+
+export type ConflictAction = 'overwrite' | 'skip' | 'rename';
+
+export type DownloadTarget = { kind: 'pick' } | { kind: 'root'; rootId: LocalRootId; path: string };
+
+export type UploadSource =
+  | { kind: 'pickFiles' }
+  | { kind: 'pickFolder' }
+  | { kind: 'root'; rootId: LocalRootId; paths: string[] };
+
+/** Événement d'un client SFTP (transferts et éditions). */
+export type SftpEvent =
+  | {
+      type: 'transferQueued';
+      job: JobId;
+      direction: 'download' | 'upload';
+      label: string;
+      count: number;
+    }
+  | { type: 'transferStarted'; job: JobId }
+  | {
+      type: 'transferProgress';
+      job: JobId;
+      bytesDone: number;
+      bytesTotal: number;
+      filesDone: number;
+      filesTotal: number;
+    }
+  | { type: 'transferConflict'; job: JobId; name: string }
+  | {
+      type: 'transferFinished';
+      job: JobId;
+      transferred: number;
+      skipped: number;
+      ignored: number;
+      refused: number;
+      failed: number;
+      code: string | null;
+    }
+  | { type: 'editUploaded'; edit: EditId }
+  | { type: 'editConflict'; edit: EditId }
+  | { type: 'editFailed'; edit: EditId; code: string };

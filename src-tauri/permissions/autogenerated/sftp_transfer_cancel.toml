@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sftp-transfer-cancel"
+description = "Enables the sftp_transfer_cancel command without any pre-configured scope."
+commands.allow = ["sftp_transfer_cancel"]
+
+[[permission]]
+identifier = "deny-sftp-transfer-cancel"
+description = "Denies the sftp_transfer_cancel command without any pre-configured scope."
+commands.deny = ["sftp_transfer_cancel"]

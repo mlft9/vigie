@@ -28,6 +28,8 @@ import type { AuthRequest, SessionEvent, SessionId } from '@/lib/types';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { useSettings } from '@/stores/settings';
 
+import { parseOsc7, SHELL_INTEGRATION } from '@/features/sftp/osc7';
+
 import { InputQueue } from './inputQueue';
 import { isOpenableUrl, isOpenGesture } from './links';
 import { analyzePaste, type PasteAnalysis } from './paste';
@@ -112,6 +114,14 @@ export class TerminalSession {
       }),
     );
     // Pas d'addon presse-papiers : les séquences OSC 52 restent sans effet (SECURITE.md §4.2).
+
+    // OSC 7 : dossier courant annoncé par le shell, suivi par le panneau SFTP (SFTP-01). Le
+    // chemin est une donnée du serveur : décodé strictement, il ne sert qu'à le lister.
+    this.terminal.parser.registerOscHandler(7, (data) => {
+      const path = parseOsc7(data);
+      if (path !== null) this.update({ remoteCwd: path });
+      return true;
+    });
 
     this.terminal.onData((data) => {
       this.input?.push(data);
@@ -284,6 +294,7 @@ export class TerminalSession {
       return;
     }
     this.sessionId = sessionId;
+    this.update({ sessionId });
     this.input = new InputQueue(
       (data, binary) => sshWrite(sessionId, data, binary),
       () => undefined,
@@ -371,6 +382,7 @@ export class TerminalSession {
 
   private handleDisconnected(code: string): void {
     this.sessionId = null;
+    this.update({ sessionId: null });
     this.input?.close();
     this.input = null;
     const current = useSessions.getState().tabs.find((t) => t.id === this.tabId);
@@ -411,7 +423,19 @@ export class TerminalSession {
     if (this.sessionId !== null) {
       void sshClose(this.sessionId).catch(() => undefined);
       this.sessionId = null;
+      this.update({ sessionId: null, remoteCwd: null });
     }
+  }
+
+  /**
+   * Insère l'intégration au prompt (OSC 7) pour que le panneau SFTP suive les `cd`, comme un
+   * collage (encadré si le programme distant l'a demandé), **sans la valider** : l'utilisateur
+   * la relit et appuie sur Entrée. Uniquement sur demande explicite ; le texte est constant.
+   */
+  sendShellIntegration(): void {
+    if (this.sessionId === null) return;
+    this.terminal.paste(SHELL_INTEGRATION);
+    this.focus();
   }
 
   private update(patch: Parameters<ReturnType<typeof useSessions.getState>['update']>[1]): void {
@@ -495,8 +519,14 @@ export function existingTerminalSession(tabId: string): TerminalSession | undefi
   return registry.get(tabId);
 }
 
-/** Ferme la session de l'onglet, libère son terminal et retire l'onglet. */
+/**
+ * Ferme la session de l'onglet, libère son terminal et retire l'onglet. Les onglets SFTP qui
+ * utilisent sa connexion sont fermés avec lui.
+ */
 export function closeTab(tabId: string): void {
+  for (const child of useSessions.getState().tabs.filter((t) => t.parentTabId === tabId)) {
+    closeTab(child.id);
+  }
   registry.get(tabId)?.dispose();
   registry.delete(tabId);
   useSessions.getState().removeTab(tabId);

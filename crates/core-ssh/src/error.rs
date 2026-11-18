@@ -111,6 +111,62 @@ pub enum SshError {
     #[error("déploiement de la clé impossible")]
     DeployFailed,
 
+    /// Le serveur refuse le sous-système SFTP, ou la session n'est pas (encore) ouverte.
+    #[error("SFTP indisponible")]
+    SftpUnavailable,
+    /// Échec d'une opération SFTP sans cause plus précise.
+    #[error("échec de l'opération SFTP")]
+    SftpFailed,
+    /// Fichier ou dossier distant introuvable.
+    #[error("fichier distant introuvable")]
+    SftpNotFound,
+    /// Droits insuffisants sur le serveur.
+    #[error("permission refusée")]
+    SftpPermissionDenied,
+    /// Un élément du même nom existe déjà.
+    #[error("élément déjà existant")]
+    SftpAlreadyExists,
+    /// L'élément n'est pas un dossier.
+    #[error("pas un dossier")]
+    SftpNotDirectory,
+    /// Chemin distant invalide (relatif, trop long, caractère NUL).
+    #[error("chemin distant invalide")]
+    SftpInvalidPath,
+    /// L'élément n'est pas un fichier ordinaire.
+    #[error("pas un fichier")]
+    SftpNotFile,
+    /// Droits (chmod) hors de 0–7777.
+    #[error("droits invalides")]
+    SftpInvalidMode,
+    /// Nom distant refusé pour une écriture locale (`..`, séparateur, nom réservé…).
+    #[error("nom de fichier distant refusé")]
+    SftpUnsafeName,
+    /// Trop d'éléments (dossier ou transfert), ou arborescence trop profonde.
+    #[error("trop d'éléments")]
+    SftpTooManyEntries,
+    /// Lecture ou écriture locale impossible.
+    #[error("erreur d'accès local")]
+    LocalIo,
+    /// Chemin local invalide ou hors du dossier choisi.
+    #[error("chemin local hors du dossier choisi")]
+    LocalOutsideRoot,
+    /// Dossier refusé comme dossier local (racine d'un disque, dossier personnel entier,
+    /// `~/.ssh`, données de Younji).
+    #[error("dossier local refusé")]
+    LocalRootForbidden,
+    /// Transfert annulé par l'utilisateur.
+    #[error("transfert annulé")]
+    TransferCancelled,
+    /// Aucun transfert ou aucune question de conflit ne correspond.
+    #[error("transfert introuvable")]
+    TransferNotFound,
+    /// Fichier trop volumineux pour l'édition locale.
+    #[error("fichier trop volumineux pour l'édition")]
+    EditTooLarge,
+    /// Le fichier distant a changé depuis son ouverture : renvoi suspendu.
+    #[error("fichier distant modifié entre-temps")]
+    EditConflict,
+
     /// Connexion perdue (coupure réseau, keepalive sans réponse, serveur arrêté).
     #[error("connexion perdue")]
     ConnectionLost,
@@ -158,6 +214,24 @@ impl SshError {
             Self::KeyGenerationFailed => "ssh.key_generation_failed",
             Self::InvalidPublicKey => "ssh.invalid_public_key",
             Self::DeployFailed => "ssh.deploy_failed",
+            Self::SftpUnavailable => "ssh.sftp_unavailable",
+            Self::SftpFailed => "ssh.sftp_failed",
+            Self::SftpNotFound => "ssh.sftp_not_found",
+            Self::SftpPermissionDenied => "ssh.sftp_permission_denied",
+            Self::SftpAlreadyExists => "ssh.sftp_already_exists",
+            Self::SftpNotDirectory => "ssh.sftp_not_directory",
+            Self::SftpInvalidPath => "ssh.sftp_invalid_path",
+            Self::SftpNotFile => "ssh.sftp_not_file",
+            Self::SftpInvalidMode => "ssh.sftp_invalid_mode",
+            Self::SftpUnsafeName => "ssh.sftp_unsafe_name",
+            Self::SftpTooManyEntries => "ssh.sftp_too_many_entries",
+            Self::LocalIo => "ssh.local_io",
+            Self::LocalOutsideRoot => "ssh.local_outside_root",
+            Self::LocalRootForbidden => "ssh.local_root_forbidden",
+            Self::TransferCancelled => "ssh.transfer_cancelled",
+            Self::TransferNotFound => "ssh.transfer_not_found",
+            Self::EditTooLarge => "ssh.edit_too_large",
+            Self::EditConflict => "ssh.edit_conflict",
             Self::ConnectionLost => "ssh.connection_lost",
             Self::SessionEnded => "ssh.session_ended",
             Self::SessionClosed => "ssh.session_closed",
@@ -198,6 +272,24 @@ impl SshError {
         Self::KeyGenerationFailed,
         Self::InvalidPublicKey,
         Self::DeployFailed,
+        Self::SftpUnavailable,
+        Self::SftpFailed,
+        Self::SftpNotFound,
+        Self::SftpPermissionDenied,
+        Self::SftpAlreadyExists,
+        Self::SftpNotDirectory,
+        Self::SftpInvalidPath,
+        Self::SftpNotFile,
+        Self::SftpInvalidMode,
+        Self::SftpUnsafeName,
+        Self::SftpTooManyEntries,
+        Self::LocalIo,
+        Self::LocalOutsideRoot,
+        Self::LocalRootForbidden,
+        Self::TransferCancelled,
+        Self::TransferNotFound,
+        Self::EditTooLarge,
+        Self::EditConflict,
         Self::ConnectionLost,
         Self::SessionEnded,
         Self::SessionClosed,

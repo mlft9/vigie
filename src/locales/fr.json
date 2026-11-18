@@ -24,8 +24,7 @@
   "sections": {
     "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
     "snippets": "Vos commandes réutilisables apparaîtront ici.",
-    "tunnels": "Vos tunnels SSH apparaîtront ici.",
-    "sftp": "L'explorateur de fichiers distant apparaîtra ici."
+    "tunnels": "Vos tunnels SSH apparaîtront ici."
   },
   "settings": {
     "title": "Paramètres",
@@ -174,7 +173,8 @@
       "search": "Rechercher dans le terminal",
       "copy": "Copier la sélection",
       "paste": "Coller",
-      "lock": "Verrouiller le coffre"
+      "lock": "Verrouiller le coffre",
+      "sftpPanel": "Panneau SFTP"
     }
   },
   "errors": {
@@ -229,7 +229,25 @@
       "invalid_answers": "Réponses invalides (trop longues ou en nombre incorrect).",
       "key_generation_failed": "La génération de la clé a échoué.",
       "invalid_public_key": "Cette clé publique ne peut pas être déployée.",
-      "deploy_failed": "Le déploiement a échoué sur le serveur. Il faut un serveur Unix (shell sh) et un dossier personnel accessible en écriture."
+      "deploy_failed": "Le déploiement a échoué sur le serveur. Il faut un serveur Unix (shell sh) et un dossier personnel accessible en écriture.",
+      "sftp_unavailable": "Le serveur n'accepte pas le SFTP sur cette connexion (sous-système désactivé ?).",
+      "sftp_failed": "L'opération a échoué sur le serveur.",
+      "sftp_not_found": "Fichier ou dossier introuvable sur le serveur.",
+      "sftp_permission_denied": "Permission refusée par le serveur.",
+      "sftp_already_exists": "Un élément de ce nom existe déjà.",
+      "sftp_not_directory": "Ce n'est pas un dossier.",
+      "sftp_not_file": "Ce n'est pas un fichier ordinaire.",
+      "sftp_invalid_path": "Chemin distant invalide : il doit commencer par « / ».",
+      "sftp_invalid_mode": "Droits invalides : saisissez 3 ou 4 chiffres de 0 à 7 (par exemple 644).",
+      "sftp_unsafe_name": "Nom de fichier refusé : il pourrait écrire en dehors du dossier choisi ou viser un fichier réservé.",
+      "sftp_too_many_entries": "Trop d'éléments ou arborescence trop profonde : opération refusée.",
+      "local_io": "Lecture ou écriture impossible sur l'ordinateur (droits, disque plein ?).",
+      "local_outside_root": "Chemin local refusé : il sort du dossier choisi.",
+      "transfer_cancelled": "Transfert annulé.",
+      "transfer_not_found": "Ce transfert est terminé.",
+      "edit_too_large": "Fichier trop volumineux pour l'édition (16 Mio au plus).",
+      "edit_conflict": "Le fichier a été modifié sur le serveur depuis son ouverture : enregistrement non envoyé.",
+      "local_root_forbidden": "Ce dossier ne peut pas être choisi : prenez un sous-dossier précis (pas la racine d’un disque, ni le dossier personnel entier, ni ~/.ssh ou les données de Younji)."
     },
     "connect": {
       "missing_fields": "Renseignez l'hôte et l'utilisateur.",
@@ -276,6 +294,18 @@
     "keys": {
       "copy_failed": "La copie dans le presse-papiers a échoué.",
       "export_failed": "Le fichier n'a pas pu être enregistré."
+    },
+    "sftp": {
+      "not_found": "L'explorateur SFTP est fermé (session terminée ?).",
+      "too_many": "Trop d'explorateurs SFTP ouverts.",
+      "edit_not_found": "Cette édition est terminée.",
+      "too_many_edits": "Trop de fichiers ouverts en édition (16 au plus)."
+    },
+    "local": {
+      "root_unknown": "Dossier local inconnu : choisissez-le à nouveau."
+    },
+    "editor": {
+      "open_failed": "L'éditeur de texte n'a pas pu être lancé."
     }
   },
   "vault": {
@@ -441,5 +471,97 @@
     "answer": "Réponse {{number}}",
     "warning": "Younji ne vous demandera jamais votre mot de passe maître ici. Ne saisissez que ce que ce serveur attend (mot de passe du compte distant, code de vérification…).",
     "submit": "Valider"
+  },
+  "sftp": {
+    "panel": "Panneau SFTP",
+    "openPanel": "Ouvrir le panneau SFTP",
+    "openPanelShortcut": "Panneau SFTP (Ctrl+Maj+E)",
+    "closePanel": "Fermer le panneau SFTP",
+    "openDual": "Ouvrir en double panneau",
+    "tabTitle": "SFTP · {{title}}",
+    "follow": "Suivre le terminal",
+    "enableFollow": "Activer le suivi",
+    "integrationHint": "Insère dans le terminal une commande (bash ou zsh) qui annonce le dossier courant à chaque invite (OSC 7). Relisez-la puis validez par Entrée. Aucune donnée n'y est ajoutée.",
+    "notConnected": "Le panneau s'ouvre une fois la session connectée.",
+    "opening": "Ouverture du SFTP…",
+    "parentClosed": "La session du terminal associée à cet onglet est fermée. Reconnectez-la, puis rouvrez l'explorateur.",
+    "localPane": "Fichiers locaux",
+    "remotePane": "Fichiers distants",
+    "sectionIntro": "L'explorateur SFTP utilise la connexion d'une session de terminal ouverte : aucune nouvelle authentification, même clé d'hôte vérifiée.",
+    "noSession": "Aucune session connectée. Ouvrez d'abord une session depuis les Hôtes ou un nouvel onglet.",
+    "remoteToolbar": "Actions sur les fichiers distants",
+    "localToolbar": "Actions sur les fichiers locaux",
+    "remoteFiles": "Fichiers distants",
+    "localFiles": "Fichiers locaux",
+    "remotePath": "Chemin distant",
+    "up": "Dossier parent",
+    "home": "Dossier personnel",
+    "uploadFiles": "Envoyer des fichiers…",
+    "uploadFolder": "Envoyer un dossier…",
+    "download": "Télécharger…",
+    "downloadHere": "Télécharger dans le dossier local",
+    "newFolder": "Nouveau dossier",
+    "edit": "Ouvrir dans l'éditeur",
+    "chmod": "Droits (chmod)",
+    "name": "Nom",
+    "empty": "Dossier vide.",
+    "truncated": "Dossier très volumineux : seules les 10 000 premières entrées sont affichées.",
+    "suspicious": "Nom inhabituel (caractères invisibles ou réservés) : il sera refusé au téléchargement.",
+    "pickLocal": "Choisir un dossier local…",
+    "noLocal": "Aucun dossier local choisi",
+    "localHint": "Choisissez un dossier de votre ordinateur : Younji ne pourra lire et écrire que dans ce dossier.",
+    "deleteTitle_one": "Supprimer cet élément ?",
+    "deleteTitle_other": "Supprimer ces {{count}} éléments ?",
+    "deleteMessage": "Suppression définitive sur le serveur : {{names}}.",
+    "deleteRecursive": "Suppression définitive sur le serveur, contenu des dossiers compris (les liens symboliques sont supprimés, pas leur cible) : {{names}}.",
+    "chmodTitle": "Droits de {{name}}",
+    "octal": "Valeur octale",
+    "perm": {
+      "read": "Lecture",
+      "write": "Écriture",
+      "exec": "Exécution",
+      "owner": "Propriétaire",
+      "group": "Groupe",
+      "others": "Autres"
+    },
+    "conflictTitle": "Élément déjà présent",
+    "conflictLocal": "« {{name}} » existe déjà dans le dossier local de destination.",
+    "conflictRemote": "« {{name}} » existe déjà sur le serveur.",
+    "applyToAll": "Appliquer aux conflits suivants de ce transfert",
+    "skip": "Ignorer",
+    "keepBoth": "Garder les deux",
+    "overwrite": "Écraser",
+    "cancelTransfer": "Annuler le transfert",
+    "transfers": "Transferts",
+    "clearFinished": "Effacer les terminés",
+    "labelMore": "{{name}} et {{count}} autre(s)",
+    "progressLabel": "Progression de {{name}}",
+    "progress": "{{done}} sur {{total}} · fichiers {{files}}/{{filesTotal}}",
+    "status": {
+      "queued": "En attente",
+      "running": "En cours",
+      "conflict": "Question",
+      "done": "Terminé",
+      "failed": "Échec",
+      "cancelled": "Annulé"
+    },
+    "summary_one": "{{count}} fichier copié",
+    "summary_other": "{{count}} fichiers copiés",
+    "summarySkipped_one": "{{count}} ignoré",
+    "summarySkipped_other": "{{count}} ignorés",
+    "summaryIgnored_one": "{{count}} lien ou fichier spécial non copié",
+    "summaryIgnored_other": "{{count}} liens ou fichiers spéciaux non copiés",
+    "summaryRefused_one": "{{count}} nom refusé (dangereux)",
+    "summaryRefused_other": "{{count}} noms refusés (dangereux)",
+    "summaryFailed_one": "{{count}} échec",
+    "summaryFailed_other": "{{count}} échecs",
+    "editStatus": {
+      "watching": "Ouvert, en attente d'enregistrement",
+      "uploaded": "Enregistré sur le serveur",
+      "conflict": "Conflit",
+      "failed": "Échec du renvoi"
+    },
+    "editForce": "Renvoyer quand même (écrase la version du serveur)",
+    "editStop": "Arrêter l'édition (supprime la copie locale)"
   }
 }

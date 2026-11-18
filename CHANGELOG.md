@@ -42,6 +42,12 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Générateur de clés SSH : Ed25519 (par défaut), ECDSA P-256, P-384 ou P-521, RSA 4096. La clé est créée directement dans le coffre (ADR-032).
 - Export de la clé publique dans un fichier `.pub`, à l'emplacement choisi dans la boîte de dialogue du système.
 - Déploiement d'une clé sur un hôte du carnet : la clé publique est ajoutée à `~/.ssh/authorized_keys`, sans doublon si on recommence, avec des permissions restrictives (700 pour `~/.ssh`, 600 pour le fichier). Serveurs Unix uniquement (ADR-033).
+- Explorateur SFTP sur la connexion d'une session de terminal ouverte, sans nouvelle authentification (ADR-034) :
+  - panneau latéral à côté du terminal (bouton ou Ctrl+Maj+E), qui suit les `cd` du shell. Si le shell n'annonce pas son dossier, le bouton « Activer le suivi » insère dans le terminal une courte commande pour bash ou zsh, à relire puis valider par Entrée ;
+  - onglet double panneau, dossier local à gauche et serveur à droite, avec glisser-déposer entre les deux ;
+  - opérations sur le serveur : naviguer, créer un dossier, renommer, supprimer (avec confirmation), modifier les droits (chmod), envoyer et télécharger des fichiers ou des dossiers entiers ;
+  - file de transferts avec progression, annulation et bilan ; quand un élément existe déjà, Younji demande s'il faut écraser, ignorer ou garder les deux, avec « appliquer aux suivants » ;
+  - ouverture d'un fichier distant dans un éditeur de texte local (Bloc-notes sous Windows), renvoyé automatiquement au serveur à chaque enregistrement. Si le fichier a été modifié sur le serveur entre-temps, rien n'est écrasé sans votre accord.
 
 ### Modifié
 - Toute l'application, connexion rapide comprise, n'est accessible qu'après le déverrouillage du coffre.
@@ -50,6 +56,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Les préférences (langue, thème, police) sont enregistrées par l'application dans un fichier `settings.json` ; les réglages déjà faits sont repris automatiquement.
 - Une identité avec une clé seule, refusée par le serveur, peut désormais aboutir aux questions du serveur (mot de passe, code), comme avec OpenSSH.
 - Le temps passé à répondre aux questions du serveur n'est plus compté dans le délai réseau de la connexion ; chaque demande laisse 2 minutes pour répondre.
+- Fermer un onglet de terminal ferme aussi les onglets SFTP qui utilisent sa connexion ; verrouiller l'application arrête aussi les transferts et les éditions en cours.
 
 ### Sécurité
 - Configuration Tauri durcie : politique de sécurité du contenu (CSP) stricte, aucun contenu distant, pas d'API Tauri globale exposée à l'interface, prototypes JavaScript gelés.
@@ -76,3 +83,12 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Le mot de passe enregistré n'est envoyé automatiquement qu'à une question « Password » / « Mot de passe » exacte et masquée, une seule fois : jamais à une question comme « New password ». Les codes saisis ne sont ni conservés, ni journalisés, ni renvoyés à l'interface.
 - Les clés générées utilisent l'aléa du système et ne quittent jamais le coffre : aucun export de la clé privée. L'export de la clé publique impose l'extension `.pub` et n'écrase jamais un fichier sans confirmation, pour ne pas remplacer par erreur une clé privée voisine.
 - Le déploiement de clé n'insère jamais la clé dans une commande exécutée sur le serveur : elle est transmise séparément, ce qui empêche toute injection. Il passe par les mêmes vérifications qu'une connexion (clé d'hôte, 2FA) et s'interrompt au verrouillage.
+- Un serveur SFTP malveillant ne peut pas écrire en dehors du dossier local choisi : les noms dangereux (`../`, `C:\…`, `CON`, `nul.txt`, `fichier:flux`, caractères invisibles ou qui inversent le sens du texte…) sont refusés, jamais corrigés, et comptés dans le bilan du transfert. Ces noms sont signalés dans la liste des fichiers.
+- Les liens symboliques ne sont pas suivis lors d'un transfert de dossier, et un lien piégé déposé dans le dossier de destination ne peut pas détourner l'écriture.
+- Un fichier n'est jamais écrasé sans que vous l'ayez demandé, et un transfert annulé ne laisse pas de fichier à moitié copié sur votre ordinateur.
+- Younji ne peut lire et écrire que dans les dossiers locaux que vous avez choisis dans la boîte de dialogue du système, et l'interface ne connaît jamais leur chemin. La racine d'un disque, le dossier personnel entier, `~/.ssh` et les dossiers de Younji sont refusés. Le panneau local ne permet ni de supprimer ni de renommer des fichiers (ADR-034).
+- Un fichier distant ouvert pour être modifié s'ouvre toujours dans un éditeur de texte, jamais dans le programme associé à son extension : un `.bat` ou un `.js` n'est pas exécuté. Sa copie locale n'est lisible que par vous et elle est supprimée à la fin de l'édition, de la session ou au verrouillage.
+- Sous Windows, les fichiers téléchargés sont marqués comme venant d'Internet : SmartScreen et le mode protégé d'Office s'appliquent. Sous Linux, ils ne sont lisibles que par vous.
+- Un serveur qui renvoie des listes de fichiers démesurées ou des arborescences trop profondes ne peut pas saturer la mémoire ni figer l'application.
+- Les fichiers glissés depuis le bureau ou l'explorateur du système dans la fenêtre sont ignorés.
+- Les journaux ne contiennent aucun nom ni contenu de fichier transféré.

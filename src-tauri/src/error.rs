@@ -42,6 +42,18 @@ impl AppError {
     pub const SETTINGS_IO: Self = Self::new("settings.io");
     /// Écriture du fichier exporté impossible.
     pub const EXPORT_FAILED: Self = Self::new("keys.export_failed");
+    /// Client SFTP inconnu (fermé, session terminée ou identifiant invalide).
+    pub const SFTP_NOT_FOUND: Self = Self::new("sftp.not_found");
+    /// Trop de clients SFTP ouverts.
+    pub const TOO_MANY_SFTP: Self = Self::new("sftp.too_many");
+    /// Dossier local inconnu (non choisi dans la boîte de dialogue, ou oublié au verrouillage).
+    pub const LOCAL_ROOT_UNKNOWN: Self = Self::new("local.root_unknown");
+    /// Édition inconnue (terminée ou identifiant invalide).
+    pub const EDIT_NOT_FOUND: Self = Self::new("sftp.edit_not_found");
+    /// Trop d'éditions simultanées.
+    pub const TOO_MANY_EDITS: Self = Self::new("sftp.too_many_edits");
+    /// L'éditeur de texte n'a pas pu être lancé.
+    pub const EDITOR_FAILED: Self = Self::new("editor.open_failed");
 
     /// Codes propres à `src-tauri` (hors `SshError`), pour le test des traductions.
     #[cfg(test)]
@@ -59,6 +71,12 @@ impl AppError {
         Self::SETTINGS_INVALID,
         Self::SETTINGS_IO,
         Self::EXPORT_FAILED,
+        Self::SFTP_NOT_FOUND,
+        Self::TOO_MANY_SFTP,
+        Self::LOCAL_ROOT_UNKNOWN,
+        Self::EDIT_NOT_FOUND,
+        Self::TOO_MANY_EDITS,
+        Self::EDITOR_FAILED,
     ];
 
     /// Crée une erreur à partir d'un code. Le code doit exister dans `src/locales/*.json`.

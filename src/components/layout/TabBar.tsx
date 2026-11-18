@@ -57,7 +57,9 @@ function SessionTabItem({
   const renameTab = useSessions((s) => s.renameTab);
   const moveTabTo = useSessions((s) => s.moveTabTo);
   const [editing, setEditing] = useState(false);
-  const title = defaultTabTitle(tab) ?? t('tabs.newSession');
+  const base = defaultTabTitle(tab) ?? t('tabs.newSession');
+  const title =
+    tab.kind === 'sftp' && !tab.customTitle ? t('sftp.tabTitle', { title: base }) : base;
 
   function commit(value: string) {
     renameTab(tab.id, value);

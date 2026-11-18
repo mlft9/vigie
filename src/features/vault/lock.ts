@@ -5,11 +5,14 @@
 import { closeAllTabs } from '@/features/terminal/TerminalSession';
 import { vaultLock } from '@/lib/ipc';
 import type { LockReason } from '@/lib/types';
+import { useSftp } from '@/stores/sftp';
 import { useVault } from '@/stores/vault';
 
 /** Applique un verrouillage décidé par le cœur (inactivité) ou demandé par l'utilisateur. */
 export function applyLocked(reason: LockReason): void {
   closeAllTabs();
+  // Transferts et éditions : le cœur les a arrêtés (copies locales supprimées).
+  useSftp.getState().reset();
   useVault.getState().setStatus('locked', reason);
 }
 

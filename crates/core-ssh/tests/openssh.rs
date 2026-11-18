@@ -395,3 +395,163 @@ async fn generated_key_is_deployed_once_and_then_used() {
     client.handle.write(cleanup.into_bytes()).await.unwrap();
     client.wait_output("nettoye-2").await;
 }
+
+// ---------------------------------------------------------------------- SFTP (étape 4)
+
+struct Reporter;
+
+impl core_ssh::sftp::transfer::TransferReporter for Reporter {
+    fn progress(&self, _progress: core_ssh::sftp::transfer::Progress) {}
+
+    fn conflict(
+        &self,
+        _name: String,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = core_ssh::sftp::transfer::ConflictDecision>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async {
+            core_ssh::sftp::transfer::ConflictDecision {
+                action: core_ssh::sftp::transfer::ConflictAction::Skip,
+                apply_to_all: true,
+            }
+        })
+    }
+}
+
+fn read_tree(dir: &std::path::Path) -> Vec<(String, Option<Vec<u8>>)> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current).unwrap().flatten() {
+            let path = entry.path();
+            let rel = path
+                .strip_prefix(dir)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            if path.is_dir() {
+                out.push((rel, None));
+                stack.push(path);
+            } else {
+                out.push((rel, Some(std::fs::read(&path).unwrap())));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+#[tokio::test]
+#[ignore = "nécessite un serveur SSH de test"]
+async fn sftp_round_trip_of_a_recursive_folder() {
+    use core_ssh::sftp::local::LocalRoot;
+    use core_ssh::sftp::transfer::{ConflictPolicy, Download, LocalDest, Upload, download, upload};
+    use core_ssh::sftp::{EntryKind, RemoteFs, ops};
+    use tokio_util::sync::CancellationToken;
+
+    let (Some(user), Some(password)) = (
+        required("YOUNJI_TEST_SSH_USER"),
+        required("YOUNJI_TEST_SSH_PASSWORD"),
+    ) else {
+        return;
+    };
+    let Some(mut client) = Client::connect(&user, password_credentials(password)) else {
+        return;
+    };
+    client.accept_and_open().await;
+    let sftp = Arc::new(client.handle.open_sftp().await.unwrap());
+
+    // Dossier de travail unique dans le dossier personnel.
+    let home = ops::home(sftp.as_ref()).await.unwrap();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let base = home.join(&format!("younji-sftp-{nonce}")).unwrap();
+    ops::mkdir(sftp.as_ref(), &base).await.unwrap();
+
+    // Arborescence locale : accents, espaces, fichier et dossier vides, fichier de 3 Mio.
+    let local = tempfile::tempdir().unwrap();
+    let src = local.path().join("Dossier été");
+    std::fs::create_dir_all(src.join("sous dossier")).unwrap();
+    std::fs::create_dir_all(src.join("dossier vide")).unwrap();
+    std::fs::write(src.join("fichier vide"), b"").unwrap();
+    std::fs::write(src.join("sous dossier/données ü.txt"), "contenu accentué é").unwrap();
+    let big: Vec<u8> = (0..3 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+    std::fs::write(src.join("gros.bin"), &big).unwrap();
+
+    let summary = upload(
+        sftp.as_ref(),
+        Upload {
+            sources: vec![std::fs::canonicalize(&src).unwrap()],
+            dest: base.clone(),
+            policy: ConflictPolicy::Ask,
+        },
+        &Reporter,
+        &CancellationToken::new(),
+    )
+    .await;
+    assert_eq!(summary.error, None, "{summary:?}");
+    assert_eq!(summary.transferred, 3);
+
+    let remote_dir = base.join("Dossier été").unwrap();
+    let listing = ops::list(sftp.as_ref(), &remote_dir).await.unwrap();
+    let mut names: Vec<_> = listing.entries.iter().map(|e| e.name.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        ["dossier vide", "fichier vide", "gros.bin", "sous dossier"]
+    );
+
+    // Téléchargement dans un autre dossier et comparaison octet par octet.
+    let back = tempfile::tempdir().unwrap();
+    let root = LocalRoot::new(back.path()).unwrap();
+    let summary = download(
+        sftp.as_ref(),
+        Download {
+            sources: vec![remote_dir.clone()],
+            dest: LocalDest {
+                dir: root.path().to_path_buf(),
+                root,
+            },
+            policy: ConflictPolicy::Ask,
+        },
+        &Reporter,
+        &CancellationToken::new(),
+    )
+    .await;
+    assert_eq!(summary.error, None, "{summary:?}");
+    assert_eq!(summary.transferred, 3);
+    assert_eq!(read_tree(local.path()), read_tree(back.path()));
+
+    // Renommage sans écrasement, droits, suppression récursive.
+    let file = remote_dir.join("fichier vide").unwrap();
+    let renamed = remote_dir.join("renommé").unwrap();
+    assert_eq!(
+        ops::rename(sftp.as_ref(), &file, &remote_dir.join("gros.bin").unwrap()).await,
+        Err(SshError::SftpAlreadyExists)
+    );
+    ops::rename(sftp.as_ref(), &file, &renamed).await.unwrap();
+    ops::chmod(sftp.as_ref(), &renamed, 0o600).await.unwrap();
+    let meta = sftp.lstat(&renamed).await.unwrap();
+    assert_eq!(
+        (meta.kind, meta.permissions),
+        (EntryKind::File, Some(0o600))
+    );
+    ops::remove(sftp.as_ref(), &base).await.unwrap();
+    assert_eq!(sftp.lstat(&base).await, Err(SshError::SftpNotFound));
+
+    // Le SFTP vit avec la session : après `exit`, il ne répond plus.
+    client.handle.write(b"exit\r".to_vec()).await.unwrap();
+    assert_eq!(
+        client.next_event().await,
+        SessionEvent::Disconnected {
+            reason: SshError::SessionEnded
+        }
+    );
+    assert!(ops::home(sftp.as_ref()).await.is_err());
+}

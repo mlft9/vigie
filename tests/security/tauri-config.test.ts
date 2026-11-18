@@ -211,6 +211,23 @@ describe('capabilities', () => {
       'allow-key-generate',
       'allow-key-export-public',
       'allow-key-deploy',
+      'allow-sftp-open',
+      'allow-sftp-close',
+      'allow-sftp-home',
+      'allow-sftp-list',
+      'allow-sftp-mkdir',
+      'allow-sftp-rename',
+      'allow-sftp-remove',
+      'allow-sftp-chmod',
+      'allow-sftp-download',
+      'allow-sftp-upload',
+      'allow-sftp-transfer-cancel',
+      'allow-sftp-conflict-decision',
+      'allow-sftp-edit',
+      'allow-sftp-edit-close',
+      'allow-sftp-edit-force',
+      'allow-local-pick-root',
+      'allow-local-list',
     ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });
