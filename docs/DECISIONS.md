@@ -10,7 +10,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 003 | Stack frontend | Acceptée |
 | 004 | Logique métier dans des crates indépendantes de Tauri | Acceptée |
 | 005 | Schéma cryptographique du coffre | Acceptée |
-| 006 | Clés d'hôte : TOFU strict | Acceptée |
+| 006 | Clés d'hôte : TOFU strict | Acceptée ; point ouvert tranché par ADR-027 |
 | 007 | RDP en deux temps | Acceptée |
 | 008 | Dépôt GitHub privé et stratégie CI | Partiellement remplacée par ADR-016 (visibilité) |
 | 009 | Licence GPL-3.0 | Acceptée |
@@ -25,11 +25,16 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 018 | CSP : balises `<style>` en ligne autorisées pour xterm.js | Acceptée |
 | 019 | russh 0.65.2, moteur `ring`, algorithmes explicites | Acceptée |
 | 020 | Clé privée choisie par la boîte de dialogue du système, désignée par identifiant | Acceptée |
-| 021 | Reconnexion sans secret mémorisé (provisoire jusqu'à l'étape 2) | Acceptée |
+| 021 | Reconnexion sans secret mémorisé (provisoire jusqu'à l'étape 2) | Remplacée par ADR-030 pour les hôtes du carnet ; reste valable pour la connexion rapide |
 | 022 | Liens du terminal : http(s), Ctrl+clic, revalidation côté Rust | Acceptée |
-| 023 | TOFU strict : anti-rétrogradation et `known_hosts` en clair | Acceptée |
+| 023 | TOFU strict : anti-rétrogradation et `known_hosts` en clair | Acceptée ; partie « `known_hosts` en clair » remplacée par ADR-027 |
 | 024 | Flux du terminal : acquittement et deux `Channel` | Acceptée |
 | 025 | xterm.js 5.5 plutôt que 6, pour garder `freezePrototype` | Acceptée |
+| 026 | Verrouillage : sessions fermées et terminaux détruits | Acceptée, prise en autonomie, à relire |
+| 027 | Clés d'hôte connues stockées dans le coffre | Acceptée, prise en autonomie, à relire |
+| 028 | Application derrière le déverrouillage ; minuteur, tentatives et sauvegarde gérés par le cœur | Acceptée, prise en autonomie, à relire |
+| 029 | Robustesse du mot de passe maître : zxcvbn (Rust) fait foi, zxcvbn-ts pour l'indicateur | Acceptée, prise en autonomie, à relire |
+| 030 | Identités et clés du coffre | Acceptée, prise en autonomie, à relire |
 
 ---
 
@@ -76,7 +81,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 **Conséquences** : changer le mot de passe maître renouvelle la DEK et rechiffre tout le coffre (voir `SECURITE.md` §3.1) ; la DEK permet le déverrouillage par le système sans y stocker le mot de passe ; les paramètres Argon2 peuvent évoluer, car ils sont stockés dans l'en-tête.
 
 ## ADR-006 — Clés d'hôte : TOFU strict
-**Statut** : Acceptée (17/11/2026)
+**Statut** : Acceptée (17/11/2026). Point ouvert (emplacement de `known_hosts`) tranché par ADR-027 : dans le coffre.
 **Décision** : acceptation explicite à la première connexion (empreinte SHA-256) ; si la clé change, la connexion est refusée, sans contournement. Fichier `known_hosts` propre à l'application, au format OpenSSH.
 **Alternatives écartées** : mode strict seul (trop contraignant au quotidien) ; configuration par hôte (complexité jugée inutile pour l'instant).
 **Conséquences** : comportement familier pour un utilisateur d'OpenSSH ; l'emplacement final de `known_hosts` (fichier ou coffre) sera tranché à l'étape 2.
@@ -219,7 +224,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 **Conséquences** : la WebView ne connaît ni l'arborescence ni le contenu de la clé. Le fichier est relu à chaque connexion (64 Kio au plus). L'import de clés dans le coffre arrive à l'étape 2.
 
 ## ADR-021 — Reconnexion sans secret mémorisé (provisoire jusqu'à l'étape 2)
-**Statut** : Acceptée (18/11/2026), décision du porteur. Provisoire : à revoir avec le coffre (étape 2).
+**Statut** : Acceptée (18/11/2026), décision du porteur. Provisoire : à revoir avec le coffre (étape 2). Remplacée par ADR-030 pour les hôtes du carnet ; reste valable pour la connexion rapide.
 **Contexte** : SSH-06 demande un bouton « Reconnecter ». Sans coffre, garder le mot de passe ou la passphrase pour la reconnexion les laisserait en mémoire pendant toute la vie de l'onglet.
 **Décision** : « Reconnecter » rouvre le formulaire pré-rempli (hôte, port, utilisateur, fichier de clé) et redemande le mot de passe ou la passphrase. Le cœur détruit les identifiants dès la fin de l'authentification ; l'interface vide le champ dès l'envoi et ne garde aucun secret dans un store.
 **Alternatives écartées** : mémoriser le secret côté Rust pendant la vie de l'onglet (plus confortable, mais secret en mémoire sans la protection du coffre).
@@ -240,7 +245,7 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 **Conséquences** : aucune permission de plugin d'ouverture dans les capabilities. `.claude/rules/tauri-config.md` est aligné sur cette règle.
 
 ## ADR-023 — TOFU strict : anti-rétrogradation et `known_hosts` en clair
-**Statut** : Acceptée (18/11/2026). Précise ADR-006.
+**Statut** : Acceptée (18/11/2026). Précise ADR-006. Partie « `known_hosts` en clair » (fichier dans `app_data_dir`, déblocage manuel) remplacée par ADR-027 ; les règles de vérification (anti-rétrogradation, `@revoked`, enregistrement après vérification de la signature) restent valables.
 **Contexte** : mise en œuvre d'HKY-01 à HKY-03. Avec un TOFU naïf, un homme du milieu qui présente une clé d'un **autre type** que celle enregistrée retomberait sur une simple demande de confiance.
 **Décision** :
 - Hôte connu (au moins une ligne pour `hôte` ou `[hôte]:port`) et clé présentée absente de la liste : **connexion bloquée**, même si le type de clé diffère. Une ligne illisible qui nomme l'hôte compte comme une clé connue : elle bloque au lieu de redemander confiance. Une clé `@revoked` est refusée.
@@ -278,3 +283,85 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Réécrire l'affectation fautive de xterm.js 6 à la compilation (plugin Vite) : rustine fragile, à revérifier à chaque mise à jour.
 
 **Conséquences** : les fonctions utilisées sont identiques en 5.5. Une mise à jour vers xterm.js 6 (Dependabot) fera échouer le test de non-régression tant que xterm.js n'aura pas corrigé ce point ; à réexaminer à chaque version majeure.
+
+## ADR-026 — Verrouillage : sessions fermées et terminaux détruits
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur
+**Contexte** : l'étape 2 (VLT-03) demande de décider du sort des sessions ouvertes au verrouillage (`SECURITE.md` §3.5). Un poste laissé sans surveillance ne doit exposer ni les secrets du coffre, ni un shell ouvert, ni l'historique affiché.
+**Décision** :
+- Tout verrouillage (manuel par le bouton ou Ctrl+Maj+L, inactivité, rechargement de l'interface) passe par `lock_everything` : le cœur **verrouille d'abord le coffre**, puis **ferme toutes les sessions SSH**.
+- Une connexion en cours de préparation revérifie l'état du coffre une fois sa session enregistrée : si un verrouillage est survenu entre-temps, la session est **refermée aussitôt** (`vault.locked`). Aucune session ne peut donc survivre au verrouillage.
+- L'interface détruit les onglets et les terminaux, tampon de défilement compris, et oublie le contenu du coffre affiché.
+
+**Alternatives écartées** :
+- Garder les sessions derrière l'écran de verrouillage : plus confortable, mais shell ouvert et historique en mémoire de l'interface sur un poste sans surveillance.
+- Option laissée à l'utilisateur : complexité supplémentaire, reportée.
+
+**Conséquences** : un verrouillage automatique interrompt les tâches longues lancées dans un terminal (délai par défaut 15 min, réglable de 1 à 60 min, sans option « jamais », voir ADR-028). Réversible : une option « garder les sessions » pourrait être ajoutée par un nouvel ADR.
+
+## ADR-027 — Clés d'hôte connues stockées dans le coffre
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur. Remplace la partie « `known_hosts` en clair » d'ADR-023 ; tranche le point ouvert d'ADR-006.
+**Contexte** : à l'étape 1, les clés d'hôte acceptées étaient dans un fichier `known_hosts` en clair (ADR-023). Ce fichier révèle la liste des serveurs (cartographie, menace M1) et, surtout, un logiciel tiers pouvait le modifier pour y glisser la clé d'un attaquant, qui serait alors acceptée sans alerte.
+**Décision** :
+- Le contenu, **au format OpenSSH**, est stocké dans le coffre (champ `knownHosts`, 4 Mio au plus), donc chiffré et authentifié.
+- `core-ssh` lit et écrit ce contenu via le trait `KnownHostsStorage`, implémenté par `src-tauri` pour le coffre (`VaultKnownHosts`). `core-ssh` ne dépend pas de `core-vault` (ADR-004) ; le stockage fichier (`FileStorage`) reste disponible pour les tests.
+- Toute connexion exige le coffre déverrouillé (`vault.locked` sinon).
+- L'ancien fichier `known_hosts` en clair est repris à la création du coffre, puis supprimé.
+- Déblocage dans Clés > Clés d'hôte connues (HKY-04), après une confirmation qui rappelle de vérifier l'empreinte. La suppression désigne la **position exacte de la ligne** et n'agit que si cette ligne n'a pas changé depuis l'affichage : une liste périmée ne supprime jamais une autre clé.
+
+**Alternatives écartées** :
+- Garder le fichier en clair : ni confidentialité ni intégrité.
+- Hacher les noms d'hôtes dans le fichier : protège la confidentialité, pas l'intégrité, et empêche d'afficher la liste.
+
+**Conséquences** : coût nul pour l'utilisateur, puisque toute l'application est déjà derrière le déverrouillage (ADR-028). L'alerte de clé modifiée n'indique plus de chemin de fichier : elle renvoie vers la gestion des clés d'hôte. HKY-03 (« fichier au format OpenSSH ») : le format est conservé, mais à l'intérieur du coffre ; l'export arrive à l'étape 9. Écart à relire par le porteur.
+
+## ADR-028 — Application derrière le déverrouillage ; minuteur, tentatives et sauvegarde gérés par le cœur
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur
+**Contexte** : VLT-01 à VLT-04. La WebView n'est pas fiable (`SECURITE.md` §5) : une interface compromise ne doit pouvoir ni empêcher le verrouillage, ni enchaîner les essais de mot de passe, ni changer le délai de verrouillage hors de l'application.
+**Décision** :
+- **Rien n'est affiché avant le déverrouillage** : carnet, terminaux et connexion rapide (qui a besoin des clés d'hôte, ADR-027).
+- **Minuteur d'inactivité dans le cœur** : tâche tokio qui vérifie toutes les 5 s. L'interface ne fait que signaler l'activité (`vault_touch`, au plus toutes les 15 s). Le délai est comparé à **deux horloges** : monotone (insensible aux changements d'heure) et murale (qui avance pendant la mise en veille). Le verrouillage a lieu dès que l'une des deux dépasse le délai : un portable rouvert après des heures se verrouille tout de suite, et une horloge murale qui recule n'empêche jamais le verrouillage.
+- **Événement de verrouillage par `Channel`** (`vault_watch`) plutôt que par un événement global, pour ne pas accorder `core:event:*` à la fenêtre.
+- **Rechargement de l'interface = verrouillage.**
+- **Délai de verrouillage stocké dans le coffre** (authentifié), pas dans `settings.json`, modifiable en clair. Valeurs 1, 5, 10, 15, 30, 60 min ; 15 par défaut.
+- **Délai progressif côté cœur** : tentatives de déverrouillage sérialisées ; après 3 échecs consécutifs, 1 s, 2 s, 4 s… jusqu'à 30 s. La vérification du mot de passe actuel lors d'un changement partage ce compteur, pour ne pas servir d'oracle sans ralentissement.
+- **Copie de sauvegarde (`vault.younji.bak`)** :
+  - au changement de mot de passe maître, le `.bak` est recopié depuis le nouveau fichier ; si la copie échoue, il est supprimé. Une copie lisible avec l'ancien mot de passe ne doit pas subsister ;
+  - la création est refusée si seul le `.bak` existe (`vault.backup_only`) : sinon, la première sauvegarde écraserait la seule copie restante. L'utilisateur la restaure en la renommant.
+
+**Alternatives écartées** :
+- Minuteur dans l'interface : une interface compromise pourrait ne jamais verrouiller.
+- Délai progressif dans l'interface : contournable par un appel IPC direct.
+- Option « jamais » pour le verrouillage : un poste oublié resterait ouvert indéfiniment.
+- Garder l'ancien `.bak` après un changement de mot de passe : il s'ouvrirait avec l'ancien mot de passe, éventuellement compromis.
+
+**Conséquences** : le cœur est seul juge du verrouillage. Une interface compromise peut seulement simuler une activité (hors modèle de menace). Limite connue : écraser un fichier n'efface pas forcément ses anciennes versions sur le disque (`SECURITE.md` §3.6).
+
+## ADR-029 — Robustesse du mot de passe maître : zxcvbn (Rust) fait foi, zxcvbn-ts pour l'indicateur
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur
+**Contexte** : `SECURITE.md` §3.4 exige au moins 12 caractères et un score zxcvbn d'au moins 3. L'utilisateur doit voir la robustesse en direct pendant la saisie, mais un secret ne doit traverser l'IPC qu'une fois.
+**Décision** :
+- **Cœur** : crate `zxcvbn` 3.1 (sans la fonctionnalité `builder`), dans `core-vault/src/policy.rs`. Contrôle appliqué à la création comme au changement de mot de passe ; c'est lui qui fait foi.
+- **Interface** : `@zxcvbn-ts/core` 4.2.0, `@zxcvbn-ts/language-common` 4.1.3 et `@zxcvbn-ts/language-en` 4.1.1, versions épinglées, chargées à la demande (dictionnaires dans un fichier séparé), pour un indicateur en direct calculé localement.
+
+**Alternatives écartées** :
+- Appel IPC à chaque frappe : le mot de passe traverserait l'IPC de nombreuses fois.
+- Heuristique maison dans l'interface : incohérente avec le contrôle du cœur.
+
+**Conséquences** : les deux implémentations peuvent rarement diverger ; le cœur l'emporte et son refus est affiché. Le test `freezePrototype` (ADR-025) charge aussi zxcvbn-ts. Limite connue : la crate `zxcvbn` copie le mot de passe dans des chaînes internes non effacées (`SECURITE.md` §6).
+
+## ADR-030 — Identités et clés du coffre
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur. Remplace ADR-021 pour les hôtes du carnet ; ADR-021 reste valable pour la connexion rapide.
+**Contexte** : HST-03 et KEY-02. Une connexion depuis le carnet doit utiliser l'identité enregistrée sans rien redemander, sans qu'aucun secret ne passe par l'interface.
+**Décision** :
+- **Import de clé** : la clé choisie par `ssh_pick_key_file` (ADR-020) est déchiffrée une fois avec sa passphrase, puis ré-encodée au format OpenSSH **sans passphrase** dans le coffre, qui la protège. La passphrase n'est pas conservée. La clé publique est stockée **sans commentaire** (il peut contenir un nom d'utilisateur ou de machine).
+- **Identité clé + mot de passe** : la clé est essayée d'abord, le mot de passe ensuite si le serveur refuse la clé.
+- **Suppressions** : une clé utilisée par une identité, ou une identité utilisée par un hôte, ne peut pas être supprimée (`vault.key_in_use`, `vault.identity_in_use`). Supprimer un groupe laisse ses hôtes « sans groupe ». Groupes à un seul niveau.
+- **Connexion depuis le carnet** (`ssh_connect_host`) : l'interface désigne l'hôte par son identifiant ; le cœur lit l'identité dans le coffre. La reconnexion fait de même. Un hôte sans identité ouvre le formulaire de connexion rapide pré-rempli.
+- Le cœur ne renvoie jamais un mot de passe d'identité (seulement `hasPassword`) ni une clé privée (seulement la clé publique et l'empreinte).
+
+**Alternatives écartées** :
+- Stocker la passphrase à côté de la clé chiffrée : aucune protection de plus que le coffre, et une saisie à chaque connexion.
+- Supprimer en cascade les identités ou hôtes liés : casserait des entrées sans prévenir.
+- Groupes imbriqués : plus complexes à valider, sans besoin exprimé par HST-02.
+
+**Conséquences** : aucune saisie à la connexion ni à la reconnexion depuis le carnet. La sécurité des clés importées repose entièrement sur le mot de passe maître et Argon2id (ADR-005). L'export d'une clé privée n'est pas proposé.

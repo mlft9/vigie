@@ -29,6 +29,20 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - L'interface reste réactive même quand le serveur envoie un très gros volume de texte (`cat` d'un gros fichier, `yes`).
 - Terminal basé sur xterm.js 5.5 : la version 6 empêchait l'application de démarrer avec le durcissement `freezePrototype` (fenêtre blanche) ; un test le vérifie désormais (ADR-025).
 - Tests d'intégration contre un vrai serveur OpenSSH, lancés en conteneur à chaque push et utilisables en local (`npm run test:integration`).
+- Coffre chiffré : au premier lancement, création avec un mot de passe maître (12 caractères au moins), un indicateur de robustesse en direct et un avertissement clair : un mot de passe oublié ne peut pas être récupéré. Aux lancements suivants, l'application s'ouvre verrouillée.
+- Verrouillage manuel (bouton de la barre latérale ou Ctrl+Maj+L) et automatique après une période d'inactivité réglable (1, 5, 10, 15, 30 ou 60 minutes ; 15 par défaut). La mise en veille de l'ordinateur compte comme de l'inactivité.
+- Changement du mot de passe maître depuis les Paramètres.
+- Carnet d'hôtes : nom, adresse, port, utilisateur, identité, groupe, étiquettes et notes. Classement par groupes, recherche instantanée, double-clic pour se connecter.
+- Identités réutilisables (utilisateur, avec mot de passe, clé ou les deux), partagées entre plusieurs hôtes. Une connexion ou une reconnexion depuis le carnet ne redemande rien. Si l'identité a une clé et un mot de passe, la clé est essayée d'abord.
+- Section Clés : import d'une clé privée existante dans le coffre (sa passphrase n'est demandée qu'une fois), renommage, copie de la clé publique.
+- Gestion des clés d'hôte connues : liste et suppression après un avertissement. L'alerte de clé modifiée y mène directement.
+- Taille de police du terminal réglable dans les Paramètres.
+
+### Modifié
+- Toute l'application, connexion rapide comprise, n'est accessible qu'après le déverrouillage du coffre.
+- Verrouiller l'application, ou recharger l'interface, ferme toutes les sessions SSH et efface le contenu des terminaux (ADR-026).
+- Les clés d'hôte acceptées sont désormais conservées dans le coffre, et non plus dans un fichier `known_hosts` en clair. Celles déjà acceptées sont reprises automatiquement à la création du coffre (ADR-027).
+- Les préférences (langue, thème, police) sont enregistrées par l'application dans un fichier `settings.json` ; les réglages déjà faits sont repris automatiquement.
 
 ### Sécurité
 - Configuration Tauri durcie : politique de sécurité du contenu (CSP) stricte, aucun contenu distant, pas d'API Tauri globale exposée à l'interface, prototypes JavaScript gelés.
@@ -43,3 +57,11 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Les messages d'accueil du serveur sont affichés comme du texte simple, sans séquences d'échappement, et leur taille est limitée.
 - La CSP admet désormais les balises de style intégrées dont le terminal a besoin, sans autoriser les attributs de style ni aucune source distante (ADR-018).
 - Recharger l'interface ferme proprement les sessions ouvertes ; F5 et Ctrl+R sont désactivés hors du terminal pour éviter une fermeture accidentelle.
+- Coffre chiffré par Argon2id et XChaCha20-Poly1305 : le fichier ne contient aucune donnée lisible et toute modification est détectée. Un mauvais mot de passe et un fichier abîmé donnent le même message, sans indice sur la cause (ADR-005).
+- Après 3 mots de passe maître erronés, chaque nouvel essai est ralenti, jusqu'à 30 secondes, y compris la vérification du mot de passe actuel lors d'un changement (ADR-028).
+- Le verrouillage automatique est décidé par le cœur de l'application, pas par l'interface. Son délai est stocké dans le coffre : il ne peut pas être modifié en dehors de l'application (ADR-028).
+- La robustesse du mot de passe maître est vérifiée par le cœur de l'application, pas seulement par l'indicateur affiché (ADR-029).
+- Les mots de passe des identités et les clés privées ne sont jamais renvoyés à l'interface : seules la présence d'un mot de passe, la clé publique et l'empreinte sont affichées (ADR-030).
+- Les clés d'hôte, chiffrées et authentifiées dans le coffre, ne peuvent plus être lues ni falsifiées par un autre logiciel (ADR-027).
+- Après un changement de mot de passe maître, la copie de sauvegarde du coffre est remplacée par une copie du nouveau coffre, ou supprimée : l'ancien mot de passe n'ouvre plus aucune copie gérée par Younji.
+- Le coffre est écrit de façon à ne jamais être laissé à moitié écrit, avec une copie de sauvegarde de la version précédente ; sa création n'écrase jamais un coffre existant ni une copie de sauvegarde restée seule.
