@@ -31,11 +31,15 @@ pub const DEFAULT_POLL: Duration = Duration::from_secs(1);
 /// Préfixe des dossiers temporaires d'édition.
 const DIR_PREFIX: &str = "younji-edit-";
 
+/// Âge au-delà duquel une copie d'édition laissée sur disque est considérée comme abandonnée.
+pub const STALE_AGE: Duration = Duration::from_secs(24 * 3600);
+
 /// Supprime les copies d'édition laissées par une exécution précédente (arrêt brutal, fichier
 /// verrouillé par l'éditeur). `parent` est le dossier propre à l'application passé à
-/// [`EditSession::start`] ; seuls ses sous-dossiers `younji-edit-*` (pas les liens) sont
-/// supprimés. Renvoie le nombre de dossiers supprimés.
-pub fn cleanup_stale(parent: &Path) -> usize {
+/// [`EditSession::start`] ; seuls ses sous-dossiers `younji-edit-*` (pas les liens) **non
+/// modifiés depuis `older_than`** sont supprimés : une seconde instance de l'application ne
+/// supprime pas les éditions en cours de la première. Renvoie le nombre de dossiers supprimés.
+pub fn cleanup_stale(parent: &Path, older_than: Duration) -> usize {
     let Ok(entries) = std::fs::read_dir(parent) else {
         return 0;
     };
@@ -46,7 +50,13 @@ pub fn cleanup_stale(parent: &Path) -> usize {
             .file_name()
             .to_str()
             .is_some_and(|name| name.starts_with(DIR_PREFIX));
-        if is_dir && ours && std::fs::remove_dir_all(entry.path()).is_ok() {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age >= older_than);
+        if is_dir && ours && old && std::fs::remove_dir_all(entry.path()).is_ok() {
             removed += 1;
         }
     }

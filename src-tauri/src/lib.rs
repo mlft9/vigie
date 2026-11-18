@@ -77,9 +77,11 @@ pub fn run() {
             app.manage(SessionManager::new(known_hosts));
             app.manage(vault);
             app.manage(SettingsStore::new(data_dir.join(SETTINGS_FILE)));
-            // Copies d'édition SFTP laissées par une exécution interrompue : supprimées.
+            // Copies d'édition SFTP abandonnées (exécution interrompue il y a plus de 24 h) :
+            // supprimées. Les plus récentes peuvent appartenir à une autre instance.
             if let Ok(dir) = commands::sftp::edit_dir(app.handle()) {
-                let removed = core_ssh::sftp::edit::cleanup_stale(&dir);
+                let removed =
+                    core_ssh::sftp::edit::cleanup_stale(&dir, core_ssh::sftp::edit::STALE_AGE);
                 if removed > 0 {
                     tracing::info!(removed, "copies d'édition restantes supprimées");
                 }

@@ -697,7 +697,16 @@ fn stale_edit_copies_are_cleaned_up() {
     std::fs::write(private.path().join("younji-edit-abc/secret.conf"), b"x").unwrap();
     std::fs::create_dir(private.path().join("autre")).unwrap();
     std::fs::write(private.path().join("younji-edit-fichier"), b"x").unwrap();
-    assert_eq!(super::edit::cleanup_stale(private.path()), 1);
+    // Copies récentes (peut-être celles d'une autre instance) : conservées.
+    assert_eq!(
+        super::edit::cleanup_stale(private.path(), super::edit::STALE_AGE),
+        0
+    );
+    assert!(private.path().join("younji-edit-abc").exists());
+    assert_eq!(
+        super::edit::cleanup_stale(private.path(), Duration::ZERO),
+        1
+    );
     assert!(!private.path().join("younji-edit-abc").exists());
     assert!(private.path().join("autre").exists());
     assert!(private.path().join("younji-edit-fichier").exists());
