@@ -117,6 +117,7 @@ describe('clé d’hôte modifiée', () => {
   it('bloque la connexion sans aucun moyen de continuer', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
+    const onManage = vi.fn();
     render(
       <HostKeyChangedAlert
         host="srv"
@@ -124,18 +125,20 @@ describe('clé d’hôte modifiée', () => {
         change={{
           key: KEY,
           known: [{ algorithm: 'ecdsa-sha2-nistp256', fingerprint: 'SHA256:ancienne' }],
-          knownHostsPath: 'C:/data/known_hosts',
           hostPattern: 'srv',
         }}
         onClose={onClose}
+        onManage={onManage}
       />,
     );
     expect(screen.getByRole('alert')).toHaveTextContent('connexion bloquée');
     expect(screen.getByText('SHA256:ancienne')).toBeInTheDocument();
-    expect(screen.getByText('C:/data/known_hosts')).toBeInTheDocument();
-    // Un seul bouton : fermer. Aucune option « continuer » ou « accepter ».
-    const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(1);
+    expect(screen.getByRole('alert')).toHaveTextContent("Clés > Clés d'hôte connues");
+    // Seulement fermer ou aller à la gestion des clés : aucune option « continuer » ou « accepter ».
+    const buttons = screen.getAllByRole('button').map((button) => button.textContent);
+    expect(buttons).toEqual(["Gérer les clés d'hôte", "Fermer l'onglet"]);
+    await user.click(screen.getByRole('button', { name: "Gérer les clés d'hôte" }));
+    expect(onManage).toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: "Fermer l'onglet" }));
     expect(onClose).toHaveBeenCalled();
   });

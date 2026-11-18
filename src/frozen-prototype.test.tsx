@@ -48,12 +48,21 @@ describe('chargement avec Object.prototype gelé (freezePrototype de Tauri)', ()
     }
   });
 
-  it("affiche l'application", async () => {
+  it("affiche l'application (porte du coffre puis interface principale)", async () => {
     const { App } = await import('./App');
     render(<App />);
+    // Hors de Tauri, l'état du coffre est inconnu : la porte du coffre s'affiche.
+    expect(await screen.findByTestId('vault-gate')).toBeInTheDocument();
+    const { AppShell } = await import('./components/layout/AppShell');
+    render(<AppShell />);
     // La langue suit le système : on cherche la barre d'onglets, pas un libellé.
     expect(await screen.findByRole('tablist')).toBeInTheDocument();
-    expect(screen.getByRole('navigation')).toBeInTheDocument();
+  });
+
+  it("charge zxcvbn-ts et estime la robustesse d'un mot de passe", async () => {
+    const { estimateStrength } = await import('./features/vault/strength');
+    expect(await estimateStrength('password')).toBeLessThan(2);
+    expect(await estimateStrength('cheval agrafe batterie correct 42')).toBeGreaterThanOrEqual(3);
   });
 
   it('crée et attache un terminal', async () => {

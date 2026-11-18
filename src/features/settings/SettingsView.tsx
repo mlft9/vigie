@@ -2,17 +2,29 @@ import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { NativeSelect } from '@/components/ui/native-select';
+import { ErrorMessage } from '@/features/connect/ErrorMessage';
 import { SHORTCUTS, shortcutKeys } from '@/features/shortcuts/shortcuts';
 import { SUPPORTED_LANGUAGES } from '@/i18n/languages';
-import { appInfo } from '@/lib/ipc';
+import { appInfo, toAppError, vaultSetAutoLock } from '@/lib/ipc';
 import {
   type LanguagePreference,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
   THEMES,
   type ThemePreference,
   useSettings,
 } from '@/stores/settings';
+import { useVault } from '@/stores/vault';
+
+import { ChangePasswordForm } from './ChangePasswordForm';
 
 const LANGUAGE_OPTIONS: readonly LanguagePreference[] = ['system', ...SUPPORTED_LANGUAGES];
+/** Délais proposés (minutes), identiques à ceux acceptés par le cœur. Pas d'option « jamais ». */
+const AUTO_LOCK_CHOICES = [1, 5, 10, 15, 30, 60] as const;
+const FONT_SIZES = Array.from(
+  { length: MAX_FONT_SIZE - MIN_FONT_SIZE + 1 },
+  (_, index) => MIN_FONT_SIZE + index,
+);
 
 function Field({
   id,
@@ -56,16 +68,33 @@ function useAppVersion(): string | null {
   return version;
 }
 
-/** Paramètres d'apparence : langue (APP-02) et thème (APP-03). */
+/** Paramètres (APP-05) : apparence, terminal, sécurité du coffre, raccourcis. */
 export function SettingsView() {
   const { t } = useTranslation();
   const theme = useSettings((s) => s.theme);
   const language = useSettings((s) => s.language);
+  const fontSize = useSettings((s) => s.terminalFontSize);
   const setTheme = useSettings((s) => s.setTheme);
   const setLanguage = useSettings((s) => s.setLanguage);
+  const setFontSize = useSettings((s) => s.setTerminalFontSize);
+  const autoLock = useVault((s) => s.snapshot.autoLockMinutes);
+  const refreshVault = useVault((s) => s.refresh);
+  const [securityError, setSecurityError] = useState<string | null>(null);
   const version = useAppVersion();
   const languageId = useId();
   const themeId = useId();
+  const fontId = useId();
+  const autoLockId = useId();
+
+  async function changeAutoLock(minutes: number) {
+    setSecurityError(null);
+    try {
+      await vaultSetAutoLock(minutes);
+    } catch (failure) {
+      setSecurityError(toAppError(failure).code);
+    }
+    await refreshVault();
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 p-8">
@@ -121,6 +150,53 @@ export function SettingsView() {
             ))}
           </NativeSelect>
         </Field>
+
+        <Field
+          id={fontId}
+          label={t('settings.terminalFont.label')}
+          description={t('settings.terminalFont.description')}
+        >
+          <NativeSelect
+            id={fontId}
+            aria-describedby={`${fontId}-description`}
+            value={fontSize}
+            onChange={(e) => {
+              setFontSize(Number(e.target.value));
+            }}
+          >
+            {FONT_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {t('settings.terminalFont.size', { size })}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+      </section>
+
+      <section aria-labelledby={`${autoLockId}-heading`} className="flex flex-col gap-5">
+        <h2 id={`${autoLockId}-heading`} className="text-sm font-semibold text-muted-foreground">
+          {t('settings.security.title')}
+        </h2>
+        {securityError && <ErrorMessage code={securityError} />}
+        <Field
+          id={autoLockId}
+          label={t('settings.security.autoLock')}
+          description={t('settings.security.autoLockDescription')}
+        >
+          <NativeSelect
+            id={autoLockId}
+            aria-describedby={`${autoLockId}-description`}
+            value={autoLock}
+            onChange={(e) => void changeAutoLock(Number(e.target.value))}
+          >
+            {AUTO_LOCK_CHOICES.map((minutes) => (
+              <option key={minutes} value={minutes}>
+                {t('settings.security.minutes', { count: minutes })}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        <ChangePasswordForm />
       </section>
 
       <section aria-labelledby={`${themeId}-shortcuts`} className="flex flex-col gap-3">

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { HostKeyInfo, KeyFileRef } from '@/lib/types';
+import type { EntryId, HostKeyInfo, KeyFileRef } from '@/lib/types';
 
 /** Onglet d'accueil (sections de la barre latérale), toujours présent en premier. */
 export const HOME_TAB_ID = 'home';
@@ -27,13 +27,16 @@ export interface ConnectTarget {
   username: string;
   authKind: 'password' | 'key';
   keyFile: KeyFileRef | null;
+  /** Hôte du carnet : la connexion utilise son identité enregistrée, sans rien redemander. */
+  hostId?: EntryId;
+  /** Nom de l'hôte dans le carnet, utilisé comme titre d'onglet. */
+  label?: string;
 }
 
 export interface HostKeyChange {
   key: HostKeyInfo;
   known: HostKeyInfo[];
-  knownHostsPath: string;
-  /** Début exact de la ligne `known_hosts` à supprimer pour débloquer. */
+  /** Forme de l'hôte dans les clés connues (`hôte` ou `[hôte]:port`). */
   hostPattern: string;
 }
 
@@ -157,6 +160,7 @@ export const useSessions = create<SessionsState>()((set, get) => ({
 export function defaultTabTitle(tab: SessionTab): string | null {
   if (tab.customTitle) return tab.customTitle;
   if (!tab.target) return null;
+  if (tab.target.label) return tab.target.label;
   const host = tab.target.host.includes(':') ? `[${tab.target.host}]` : tab.target.host;
   return `${tab.target.username}@${host}`;
 }

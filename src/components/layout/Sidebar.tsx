@@ -2,6 +2,7 @@ import {
   ArrowLeftRight,
   FolderTree,
   KeyRound,
+  Lock,
   type LucideIcon,
   Server,
   Settings,
@@ -9,6 +10,8 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { formatShortcut } from '@/features/shortcuts/shortcuts';
+import { lockNow } from '@/features/vault/lock';
 import { cn } from '@/lib/utils';
 import { HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { type Section, useUi } from '@/stores/ui';
@@ -69,6 +72,21 @@ export function Sidebar() {
         </ul>
         <ul className="flex flex-col gap-1">
           <SidebarItem section="settings" icon={Settings} />
+          <li>
+            <button
+              type="button"
+              onClick={() => void lockNow()}
+              title={formatShortcut('lock', t)}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm outline-none transition-colors',
+                'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                'focus-visible:ring-[3px] focus-visible:ring-ring/50',
+              )}
+            >
+              <Lock aria-hidden="true" className="size-4 shrink-0" />
+              <span>{t('vault.lock')}</span>
+            </button>
+          </li>
         </ul>
       </nav>
     </aside>

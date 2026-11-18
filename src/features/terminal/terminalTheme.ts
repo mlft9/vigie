@@ -6,8 +6,6 @@ import type { ResolvedTheme } from '@/features/settings/theme';
 export const TERMINAL_FONT_FAMILY =
   "'Cascadia Mono', 'Cascadia Code', Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Ubuntu Mono', monospace";
 
-export const TERMINAL_FONT_SIZE = 14;
-
 const DARK: ITheme = {
   background: '#16161a',
   foreground: '#e4e4e7',

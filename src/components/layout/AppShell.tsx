@@ -1,3 +1,5 @@
+import { HostsView } from '@/features/hosts/HostsView';
+import { KeysView } from '@/features/keys/KeysView';
 import { SettingsView } from '@/features/settings/SettingsView';
 import { useShortcuts } from '@/features/shortcuts/useShortcuts';
 import { SessionPanel } from '@/features/terminal/SessionPanel';
@@ -29,7 +31,12 @@ export function AppShell() {
           hidden={!homeActive}
           className={cn('min-h-0 flex-1 overflow-auto', !homeActive && 'hidden')}
         >
-          {section === 'settings' ? <SettingsView /> : <SectionPlaceholder section={section} />}
+          {section === 'settings' && <SettingsView />}
+          {section === 'hosts' && <HostsView />}
+          {section === 'keys' && <KeysView />}
+          {section !== 'settings' && section !== 'hosts' && section !== 'keys' && (
+            <SectionPlaceholder section={section} />
+          )}
         </main>
         {/* Les sessions restent montées quand leur onglet est masqué : le terminal garde son tampon. */}
         {tabs.map((tab) => (
