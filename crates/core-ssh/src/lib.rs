@@ -8,10 +8,10 @@ pub mod known_hosts;
 mod session;
 mod target;
 
-pub use auth::Credentials;
+pub use auth::{Credentials, ImportedKey};
 pub use config::Timeouts;
 pub use error::SshError;
-pub use known_hosts::{HostKeyStatus, KeyInfo, KnownHosts};
+pub use known_hosts::{HostKeyStatus, KeyInfo, KnownHostEntry, KnownHosts, KnownHostsStorage};
 pub use session::{
     ConnectParams, HIGH_WATERMARK, MAX_INPUT_CHUNK, SessionEvent, SessionHandle, SessionSink,
 };

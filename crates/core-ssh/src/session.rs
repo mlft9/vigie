@@ -16,9 +16,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::client::{self, Handle};
-use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg, PublicKey};
 use russh::{ChannelMsg, ChannelWriteHalf, Disconnect};
-use secrecy::ExposeSecret;
+use secrecy::{ExposeSecret, SecretString};
 use tokio::net::TcpStream;
 use tokio::sync::{Notify, mpsc, oneshot};
 use tokio::time::{Instant, sleep_until, timeout};
@@ -441,30 +441,58 @@ async fn authenticate(
         SshError::ConnectionLost
     };
     let result = match credentials {
-        Credentials::Password(password) => handle
-            .authenticate_password(username, password.expose_secret())
-            .await
-            .map_err(auth_error)?,
-        Credentials::PrivateKey(key) => {
-            // Signature RSA toujours en SHA-2, même si le serveur n'annonce rien : jamais SHA-1.
-            let hash = handle
-                .best_supported_rsa_hash()
-                .await
-                .map_err(auth_error)?
-                .flatten()
-                .or(Some(HashAlg::Sha512));
-            let key = PrivateKeyWithHashAlg::new(key, hash);
-            handle
-                .authenticate_publickey(username, key)
-                .await
-                .map_err(auth_error)?
+        Credentials::Password(password) => {
+            password_auth(handle, username, &password, auth_error).await?
+        }
+        Credentials::PrivateKey(key) => key_auth(handle, username, key, auth_error).await?,
+        Credentials::KeyThenPassword(key, password) => {
+            let by_key = key_auth(handle, username.clone(), key, auth_error).await?;
+            if by_key {
+                true
+            } else {
+                password_auth(handle, username, &password, auth_error).await?
+            }
         }
     };
-    if result.success() {
+    if result {
         Ok(())
     } else {
         Err(SshError::AuthFailed)
     }
+}
+
+async fn password_auth(
+    handle: &mut Handle<ClientHandler>,
+    username: String,
+    password: &SecretString,
+    auth_error: impl Fn(russh::Error) -> SshError,
+) -> Result<bool, SshError> {
+    let result = handle
+        .authenticate_password(username, password.expose_secret())
+        .await
+        .map_err(auth_error)?;
+    Ok(result.success())
+}
+
+async fn key_auth(
+    handle: &mut Handle<ClientHandler>,
+    username: String,
+    key: Arc<PrivateKey>,
+    auth_error: impl Fn(russh::Error) -> SshError,
+) -> Result<bool, SshError> {
+    // Signature RSA toujours en SHA-2, même si le serveur n'annonce rien : jamais SHA-1.
+    let hash = handle
+        .best_supported_rsa_hash()
+        .await
+        .map_err(&auth_error)?
+        .flatten()
+        .or(Some(HashAlg::Sha512));
+    let key = PrivateKeyWithHashAlg::new(key, hash);
+    let result = handle
+        .authenticate_publickey(username, key)
+        .await
+        .map_err(&auth_error)?;
+    Ok(result.success())
 }
 
 async fn open_shell(

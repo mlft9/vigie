@@ -327,6 +327,6 @@ async fn changed_host_key_is_blocked() {
         }
     );
     // Le fichier n'a pas été modifié : l'ancienne clé reste la seule enregistrée.
-    let content = std::fs::read_to_string(client.known_hosts.path()).unwrap();
+    let content = std::fs::read_to_string(client.known_hosts.path().unwrap()).unwrap();
     assert_eq!(content.lines().count(), 1);
 }
