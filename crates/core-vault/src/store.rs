@@ -208,12 +208,21 @@ impl Vault {
         let keys = fresh_keys(new)?;
         let candidate = Self::from_keys(self.path.clone(), keys, self.data.clone());
         candidate.write(WriteMode::Replace)?;
-        // La copie de sauvegarde contient encore l'ancienne version, chiffrée avec l'ancien sel et
-        // l'ancienne DEK : elle s'ouvrirait avec l'ancien mot de passe. On la remplace par une
-        // copie du nouveau fichier.
-        candidate.write_backup_of_current()?;
+        // Le fichier principal utilise désormais les nouvelles clés : le coffre en mémoire aussi,
+        // sinon la prochaine sauvegarde reviendrait silencieusement à l'ancien mot de passe.
         *self = candidate;
         tracing::info!("mot de passe maître changé");
+        // La copie de sauvegarde contient encore l'ancienne version, chiffrée avec l'ancien sel et
+        // l'ancienne DEK : elle s'ouvrirait avec l'ancien mot de passe. On la remplace par une
+        // copie du nouveau fichier ; à défaut, on la supprime : mieux vaut aucune copie qu'une
+        // copie lisible avec l'ancien mot de passe.
+        if let Err(error) = self.write_backup_of_current() {
+            tracing::warn!(code = error.code(), "copie de sauvegarde non renouvelée");
+            match fs::remove_file(backup_path(&self.path)) {
+                Ok(()) => tracing::warn!("ancienne copie de sauvegarde supprimée"),
+                Err(error) => tracing::error!(%error, "ancienne copie de sauvegarde conservée"),
+            }
+        }
         Ok(())
     }
 

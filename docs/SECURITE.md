@@ -60,18 +60,29 @@ Entiers en little-endian. La longueur annoncée est vérifiée **avant toute all
 
 ### 3.4 Mot de passe maître
 - Minimum 12 caractères, et estimation de robustesse avec `zxcvbn` (score ≥ 3 exigé, avec une explication si le mot de passe est refusé).
+  - **Mise en œuvre (étape 2, ADR-029)** : le contrôle **fait foi dans le cœur** (crate `zxcvbn`, `core-vault/src/policy.rs`), à la création comme au changement de mot de passe. L'interface affiche un indicateur en direct calculé localement par `@zxcvbn-ts` (dictionnaires chargés à la demande), pour ne pas envoyer le mot de passe au cœur à chaque frappe ; en cas de divergence, le refus du cœur s'affiche.
 - Aucune récupération possible si on l'oublie. Il faut le dire clairement à la création, et proposer l'export chiffré (étape 9) comme sauvegarde.
 - Délai progressif après plusieurs échecs dans l'interface. C'est surtout du confort : la vraie protection contre M1 reste Argon2id.
+  - **Mise en œuvre (étape 2)** : imposé **par le cœur** (`src-tauri/src/vault_state.rs`), pas par l'interface. Les tentatives sont traitées une à une ; après 3 échecs consécutifs, chaque tentative attend 1 s, 2 s, 4 s… jusqu'à 30 s. La vérification du mot de passe actuel lors d'un changement partage ce compteur, pour qu'elle ne serve pas d'oracle sans ralentissement.
 
 ### 3.5 Cycle de vie en mémoire
 - DEK et secrets déchiffrés dans `SecretBox` / `SecretString`, effacés (`zeroize`) au verrouillage et à la fermeture.
 - Argon2 tourne dans `spawn_blocking` pour ne pas figer l'application.
 - **Verrouillage** : la DEK et tous les secrets déchiffrés sont supprimés. Le comportement des sessions déjà ouvertes est à décider à l'étape 2 (ADR).
+  - **Décision (étape 2, ADR-026)** : tout verrouillage (manuel, Ctrl+Maj+L ; inactivité ; rechargement de l'interface) **ferme toutes les sessions SSH** et l'interface **détruit les onglets et les terminaux**, tampon de défilement compris. Le coffre est verrouillé avant la fermeture des sessions, et une session enregistrée pendant le verrouillage est refermée aussitôt.
+  - **Verrouillage automatique** : le minuteur tourne **dans le cœur**. L'interface ne fait que signaler l'activité au clavier, à la souris ou à la molette (au plus toutes les 15 s) ; elle ne décide pas du verrouillage. Deux horloges sont comparées au délai (monotone et murale) : la mise en veille compte, et une horloge murale qui recule n'empêche jamais le verrouillage. Délai de 1 à 60 min (15 par défaut), **sans option « jamais »**, stocké dans le coffre (authentifié) et non dans `settings.json`.
+  - **Toute l'application est derrière le déverrouillage** (ADR-028) : carnet, terminaux et connexion rapide ne s'affichent qu'une fois le coffre ouvert.
 - Limite connue : Rust ne garantit pas l'absence de copies (swap, réallocations). On limite les copies, sans promettre l'impossible.
 
 ### 3.6 Écriture
 - Écriture atomique : fichier temporaire dans le même dossier, `fsync`, puis renommage par-dessus l'original (`tempfile::NamedTempFile::persist`). La version précédente devient `vault.younji.bak`.
 - Permissions : 0600 pour les fichiers et 0700 pour le dossier sous Linux. Sous Windows, le profil utilisateur (`%APPDATA%`) suffit.
+- **Mise en œuvre (étape 2)** :
+  - La copie `.bak` est elle aussi écrite de façon atomique, avant le remplacement du fichier principal. Un dossier de données déjà existant avec d'autres droits est ramené à 0700 sous Linux.
+  - Après un **changement de mot de passe**, le `.bak` est recopié depuis le nouveau fichier : l'ancien mot de passe n'ouvre plus aucune copie gérée par Younji.
+  - La création n'écrase jamais un fichier (`persist_noclobber`) et elle est **refusée si seul le `.bak` existe** (`vault.backup_only`) : sinon la première sauvegarde écraserait la seule copie restante. L'utilisateur la restaure en la renommant.
+  - **Limite connue** : l'écrasement d'un fichier ne garantit pas l'effacement physique des anciennes versions (SSD, journal du système de fichiers, sauvegardes du système, clichés instantanés). Une ancienne copie du coffre récupérée par ces moyens reste protégée par l'**ancien** mot de passe : après une fuite présumée de celui-ci, la protection des données déjà sauvegardées ailleurs ne peut pas être garantie.
+- **`settings.json`** (langue, thème, taille de police) est en clair, car il doit être lisible avant le déverrouillage. Il ne contient **aucune donnée sensible** ; chaque valeur relue est validée et une valeur inattendue reprend sa valeur par défaut.
 
 ### 3.7 Export chiffré (étape 9)
 Même schéma, avec la magie `"YNJB"`, un **sel distinct** et une **phrase de passe distincte** du mot de passe maître. Un fichier altéré est rejeté (tag AEAD).
@@ -80,6 +91,7 @@ Même schéma, avec la magie `"YNJB"`, un **sel distinct** et une **phrase de pa
 
 ### 4.1 SSH
 - **Clés d'hôte** : confiance à la première connexion. On affiche l'algorithme et l'empreinte `SHA256:…`, au format OpenSSH, pour pouvoir la comparer avec `ssh-keygen -lf`. Règle stricte (ADR-023) : si l'hôte est déjà connu et que la clé présentée n'est pas dans la liste enregistrée, **même si elle est d'un autre type**, la connexion est **refusée**, sans bouton « continuer quand même » et avant tout envoi d'identifiant. Cette règle empêche un homme du milieu de proposer un autre algorithme pour retomber sur une simple demande de confiance. Une ligne illisible qui nomme l'hôte compte comme une clé connue : elle bloque au lieu de redemander confiance. Une clé `@revoked` est refusée. La clé acceptée n'est enregistrée qu'après la vérification, par russh, de la signature du serveur sur l'échange de clés : le serveur a prouvé qu'il détient la clé privée. Pour débloquer, il faut supprimer explicitement l'ancienne clé : à la main dans `known_hosts` jusqu'à l'étape 2 (l'alerte indique le fichier et la ligne), puis dans la gestion des clés d'hôte (HKY-04), après un avertissement.
+  - **Depuis l'étape 2 (ADR-027)** : les clés d'hôte connues sont stockées **dans le coffre** (format OpenSSH conservé), donc chiffrées et **authentifiées** : un logiciel tiers ne peut plus ni lire la liste des serveurs ni y glisser la clé d'un attaquant en modifiant un fichier en clair. L'ancien fichier `known_hosts` est repris à la création du coffre puis supprimé. Le déblocage se fait dans Clés > Clés d'hôte connues : la suppression désigne la ligne exacte et demande une confirmation qui rappelle de vérifier l'empreinte auprès de l'administrateur.
 - **Algorithmes** : liste explicite dans `crates/core-ssh/src/config.rs`, sans dépendre des défauts de russh (ADR-019) : échange de clés hybride post-quantique `mlkem768x25519-sha256` en tête, puis curve25519, ECDH NIST et DH groupes 14/16/18 en SHA-2, avec « strict kex » (parade à Terrapin) ; ChaCha20-Poly1305 et AES-GCM, AES-CTR en repli avec MAC *-etm SHA-2 ; signatures RSA uniquement en SHA-2. SHA-1, CBC, 3DES, DSA, DH group exchange, la compression et `none` sont **désactivés** ; un test échoue s'ils réapparaissent. Une option par hôte « algorithmes hérités » (pour les vieux équipements réseau) pourra être ajoutée via un ADR, avec un avertissement visible.
 - **Pas d'agent forwarding ni de X11 forwarding** (hors périmètre).
 - Les délais d'attente et le keepalive évitent les sessions zombies.
@@ -119,6 +131,8 @@ Même schéma, avec la magie `"YNJB"`, un **sel distinct** et une **phrase de pa
 - **Fichiers temporaires** : noms aléatoires, permissions restrictives, suppression garantie, y compris en cas d'erreur (`Drop`).
 - **Crash** : pas de rapport de plantage envoyé (aucune télémétrie).
 - **Diffusion multi-sessions** : indicateur visuel impossible à manquer et confirmation à l'activation.
+- **Identités et clés du coffre (étape 2, ADR-030)** : une clé importée est déchiffrée une fois avec sa passphrase, puis stockée **sans** passphrase dans le coffre, qui la protège ; la passphrase n'est pas conservée. Le cœur ne renvoie jamais à l'interface ni le mot de passe d'une identité (seulement `hasPassword`) ni une clé privée (seulement la clé publique, sans commentaire, et l'empreinte). Une connexion depuis le carnet désigne l'hôte par son identifiant : aucun secret ne transite par l'interface, reconnexion comprise.
+- **Limites mémoire connues (étape 2)** : comme russh, la crate `zxcvbn` copie le mot de passe maître dans des chaînes internes qui ne sont pas effacées ; les corps JSON des commandes qui transportent un secret (`vault_create`, `vault_unlock`, `vault_change_password`, `identity_save`, `key_import`) passent par des tampons de la WebView et de Tauri qu'on ne peut pas effacer. Même traitement et même limite que ci-dessous.
 - **Limites mémoire connues (étape 1)** : russh reçoit le mot de passe sous forme de `String` ordinaire pendant l'authentification, et cette copie n'est pas effacée par Younji. Le corps JSON d'un appel IPC qui transporte un secret (`ssh_connect`) passe par les tampons de la WebView et de Tauri, qu'on ne peut pas effacer. Le cœur place le secret dans un `SecretString` dès la désérialisation, détruit les identifiants dès la fin de l'authentification, et l'interface vide le champ dès l'envoi. Ces copies résiduelles relèvent de la limite déjà décrite au §3.5 et du hors-modèle du §2 (lecture de la mémoire par un malware local).
 
 ## 7. Mises à jour et signature
