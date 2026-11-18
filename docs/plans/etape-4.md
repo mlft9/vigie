@@ -73,3 +73,15 @@ Aucune dépendance npm : le glisser-déposer utilise l'API HTML5 native.
 5. **Envoi** : écriture directe du fichier distant (pas de renommage atomique, l'extension `posix-rename` n'est pas exposée par la crate) ; en cas d'annulation, un fichier distant **créé** par le transfert est supprimé ; un fichier écrasé ne peut pas être restauré (limite documentée).
 6. **Suivi du dossier** : OSC 7 seulement, avec intégration au prompt sur demande pour bash et zsh ; pas d'analyse du prompt.
 7. **Suppression distante d'un dossier** : récursive après confirmation explicite, bornée, sans suivre les liens.
+
+## 7. Écarts en cours d'étape
+
+Constatés pendant le développement et la revue de sécurité ; tous repris dans ADR-034 et `SECURITE.md` §4.2.
+
+1. **Éditeur sous Linux** : plus de `xdg-open` sur une copie `.txt` (il suit les associations de l'utilisateur et peut détecter le type par le contenu). Liste fixe d'éditeurs graphiques cherchés par chemin absolu dans `/usr/bin`, `/usr/local/bin` et `/bin`, jamais dans le `PATH` ; aucun trouvé : `editor.open_failed`. macOS : `open -e`.
+2. **Paramètre `policy` retiré de l'IPC** : `sftp_download` et `sftp_upload` n'acceptent plus de politique de conflit ; tout transfert démarre en « demander », pour qu'une interface compromise ne puisse pas imposer l'écrasement d'avance.
+3. **`RootPolicy`** : un dossier local choisi est refusé s'il s'agit de la racine d'un disque, du dossier personnel entier ou d'un de ses ancêtres, de `~/.ssh` ou de son contenu, ou d'un dossier de données de l'application. Une racine reste une autorisation durable jusqu'au verrouillage.
+4. **Copies d'édition dans le dossier de l'application** (`<app_local_data>/edits`, 0700) plutôt que dans le dossier temporaire partagé ; au démarrage, seules les copies abandonnées depuis plus de 24 h sont supprimées (une autre instance peut utiliser les plus récentes).
+5. **Intégration au prompt sans Entrée** : le texte constant est inséré comme un collage (encadré si le programme distant l'a demandé), sans être validé ; l'utilisateur le relit et appuie lui-même sur Entrée. Un programme au premier plan, une invite `sudo` ou un équipement réseau ne l'exécute donc jamais d'office.
+6. **Mark-of-the-Web** sous Windows sur les fichiers téléchargés (`Zone.Identifier`, `ZoneId=3`), au mieux.
+7. **Exception cargo-deny RUSTSEC-2026-0543** : `chrono` (non maintenue), transitive de `russh-sftp`, code jamais appelé côté client. À retirer dès que `russh-sftp` s'en passe.

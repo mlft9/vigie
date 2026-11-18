@@ -79,6 +79,21 @@ touch ~/sftp-tests/{"fichier avec espaces.txt","éàü.txt",".cache-caché"}
 ln -s /etc/passwd ~/sftp-tests/lien-vers-passwd
 ```
 
+Noms malveillants (étape 4, critère « ne peut pas écrire hors du dossier local choisi »), dans un dossier à part. Ils se créent sous Linux, où seuls `/` et NUL sont interdits ; `printf` produit les caractères spéciaux :
+```bash
+mkdir -p ~/sftp-tests/malveillants && cd ~/sftp-tests/malveillants
+touch "$(printf 'retour\nligne.txt')"          # retour à la ligne
+touch "$(printf 'echap\033[31mrouge.txt')"     # séquence d'échappement (ESC)
+touch "$(printf 'facture\342\200\256fdp.exe')" # U+202E : inverse le sens du texte affiché
+touch CON nul.txt 'COM1.log'                    # noms réservés de Windows
+touch '..\x' 'C:\evil.txt' 'fichier:flux' 'point.' 'espace '
+echo normal > normal.txt                         # témoin : doit être copié
+ln -s /etc lien-vers-etc                         # lien vers un dossier système
+ln -s .. lien-vers-parent                        # boucle
+cd -
+```
+Attendu au téléchargement du dossier `malveillants` : seul `normal.txt` est copié ; les autres noms sont comptés en « noms refusés », les liens en « liens non copiés », et rien n'apparaît en dehors du dossier local choisi. Dans la liste, ces noms sont signalés comme inhabituels.
+
 Service pour les tests de tunnels :
 ```bash
 python3 -m http.server 8080 --bind 127.0.0.1   # joignable seulement depuis la VM elle-même
