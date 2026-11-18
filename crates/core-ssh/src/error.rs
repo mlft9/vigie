@@ -81,9 +81,35 @@ pub enum SshError {
     /// Authentification refusée par le serveur.
     #[error("authentification refusée")]
     AuthFailed,
+    /// Demande keyboard-interactive du serveur hors des bornes admises (trop de questions ou
+    /// de tours).
+    #[error("demande d'authentification invalide")]
+    AuthPromptInvalid,
+    /// Pas de réponse de l'utilisateur aux questions du serveur dans le délai imparti.
+    #[error("délai de réponse dépassé")]
+    AuthPromptTimeout,
+    /// L'utilisateur a annulé l'authentification.
+    #[error("authentification annulée")]
+    AuthCancelled,
+    /// Aucune question du serveur n'attend de réponse pour cette session.
+    #[error("aucune question en attente")]
+    NoPendingPrompt,
+    /// Réponses invalides (nombre incorrect, réponse trop longue).
+    #[error("réponses invalides")]
+    InvalidAnswers,
     /// Ouverture du canal, du PTY ou du shell refusée.
     #[error("ouverture du terminal distant impossible")]
     ChannelFailed,
+
+    /// Génération de clé impossible.
+    #[error("génération de clé impossible")]
+    KeyGenerationFailed,
+    /// Clé publique impropre au déploiement.
+    #[error("clé publique invalide")]
+    InvalidPublicKey,
+    /// Le déploiement de la clé a échoué sur le serveur (shell non POSIX, droits…).
+    #[error("déploiement de la clé impossible")]
+    DeployFailed,
 
     /// Connexion perdue (coupure réseau, keepalive sans réponse, serveur arrêté).
     #[error("connexion perdue")]
@@ -123,7 +149,15 @@ impl SshError {
             Self::KnownHostsIo => "ssh.known_hosts_io",
             Self::NoPendingDecision => "ssh.no_pending_decision",
             Self::AuthFailed => "ssh.auth_failed",
+            Self::AuthPromptInvalid => "ssh.auth_prompt_invalid",
+            Self::AuthPromptTimeout => "ssh.auth_prompt_timeout",
+            Self::AuthCancelled => "ssh.auth_cancelled",
+            Self::NoPendingPrompt => "ssh.no_pending_prompt",
+            Self::InvalidAnswers => "ssh.invalid_answers",
             Self::ChannelFailed => "ssh.channel_failed",
+            Self::KeyGenerationFailed => "ssh.key_generation_failed",
+            Self::InvalidPublicKey => "ssh.invalid_public_key",
+            Self::DeployFailed => "ssh.deploy_failed",
             Self::ConnectionLost => "ssh.connection_lost",
             Self::SessionEnded => "ssh.session_ended",
             Self::SessionClosed => "ssh.session_closed",
@@ -155,7 +189,15 @@ impl SshError {
         Self::KnownHostsIo,
         Self::NoPendingDecision,
         Self::AuthFailed,
+        Self::AuthPromptInvalid,
+        Self::AuthPromptTimeout,
+        Self::AuthCancelled,
+        Self::NoPendingPrompt,
+        Self::InvalidAnswers,
         Self::ChannelFailed,
+        Self::KeyGenerationFailed,
+        Self::InvalidPublicKey,
+        Self::DeployFailed,
         Self::ConnectionLost,
         Self::SessionEnded,
         Self::SessionClosed,

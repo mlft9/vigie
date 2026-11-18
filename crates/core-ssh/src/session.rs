@@ -1,5 +1,6 @@
 //! Session SSH interactive : connexion, clé d'hôte, authentification, PTY et shell
-//! (SSH-01, SSH-02, SSH-04, SSH-06).
+//! (SSH-01, SSH-02, SSH-04, SSH-06, AUTH-03), et déploiement d'une clé publique (KEY-03), qui
+//! partage la même connexion, la même vérification de clé d'hôte et la même authentification.
 //!
 //! Chaque session vit dans une tâche tokio propriétaire, annulable. L'appelant la pilote via
 //! un [`SessionHandle`] et reçoit les événements et la sortie du terminal via un
@@ -15,7 +16,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use russh::client::{self, Handle};
+use russh::MethodKind;
+use russh::client::{self, Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg, PublicKey};
 use russh::{ChannelMsg, ChannelWriteHalf, Disconnect};
 use secrecy::{ExposeSecret, SecretString};
@@ -26,7 +28,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::auth::Credentials;
 use crate::config::{Timeouts, client_config};
+use crate::deploy::{self, AuthorizedKeyLine, DeployOutcome};
 use crate::known_hosts::{HostKeyStatus, KeyInfo, KnownHosts};
+use crate::prompt::{AuthPrompt, MAX_PROMPT_ROUNDS, PromptAnswers};
 use crate::{SshError, Target, TermSize};
 
 /// Type de terminal annoncé au serveur.
@@ -62,8 +66,17 @@ pub enum SessionEvent {
         /// Clés enregistrées pour cet hôte.
         known: Vec<KeyInfo>,
     },
-    /// Clé d'hôte acceptée, authentification en cours.
+    /// Clé d'hôte acceptée, authentification en cours. Émis aussi après chaque réponse de
+    /// l'utilisateur à une demande du serveur.
     Authenticating,
+    /// Le serveur pose des questions (keyboard-interactive : code TOTP…) : l'appelant doit
+    /// appeler [`SessionHandle::answer_prompts`].
+    AuthPrompt(AuthPrompt),
+    /// Déploiement de clé terminé avec succès (le dernier événement suit aussitôt).
+    KeyDeployed {
+        /// `true` si la clé a été ajoutée, `false` si elle était déjà présente.
+        added: bool,
+    },
     /// Shell ouvert, la session est utilisable.
     Connected,
     /// Session terminée. Dernier événement émis.
@@ -96,12 +109,42 @@ pub struct ConnectParams {
     pub timeouts: Timeouts,
 }
 
+/// Paramètres d'un déploiement de clé publique (KEY-03).
+#[derive(Debug)]
+pub struct DeployParams {
+    /// Cible validée.
+    pub target: Target,
+    /// Moyen d'authentification. Il est détruit dès la fin de l'authentification.
+    pub credentials: Credentials,
+    /// Ligne de clé publique à ajouter dans `authorized_keys`.
+    pub key: AuthorizedKeyLine,
+    /// Fichier des clés d'hôte connues.
+    pub known_hosts: Arc<KnownHosts>,
+    /// Délais.
+    pub timeouts: Timeouts,
+}
+
+/// Ce que fait la session une fois authentifiée.
+enum Purpose {
+    Shell(TermSize),
+    Deploy(AuthorizedKeyLine),
+}
+
 enum Control {
     Input(Vec<u8>),
     Resize(TermSize),
 }
 
 type DecisionSlot = Arc<Mutex<Option<oneshot::Sender<bool>>>>;
+
+/// Demande keyboard-interactive en attente de réponse : nombre de réponses attendues et
+/// destinataire (`None` = annulation).
+struct PendingPrompt {
+    expected: usize,
+    sender: oneshot::Sender<Option<PromptAnswers>>,
+}
+
+type PromptSlot = Arc<Mutex<Option<PendingPrompt>>>;
 
 /// Compteur des octets envoyés à l'appelant et pas encore acquittés.
 #[derive(Default)]
@@ -143,6 +186,7 @@ impl Flow {
 pub struct SessionHandle {
     control: mpsc::Sender<Control>,
     decision: DecisionSlot,
+    prompt: PromptSlot,
     flow: Arc<Flow>,
     cancel: CancellationToken,
 }
@@ -158,21 +202,61 @@ impl std::fmt::Debug for SessionHandle {
 impl SessionHandle {
     /// Démarre une session dans une nouvelle tâche tokio (à appeler dans un contexte tokio).
     pub fn spawn(params: ConnectParams, sink: Arc<dyn SessionSink>) -> Self {
+        let ConnectParams {
+            target,
+            credentials,
+            size,
+            known_hosts,
+            timeouts,
+        } = params;
+        let common = Common {
+            target,
+            credentials,
+            known_hosts,
+            timeouts,
+        };
+        Self::start(common, Purpose::Shell(size), sink)
+    }
+
+    /// Démarre un déploiement de clé publique dans une nouvelle tâche tokio. Le pilotage
+    /// (clé d'hôte, questions du serveur, fermeture) est le même que pour une session ;
+    /// l'issue arrive par [`SessionEvent::KeyDeployed`] puis [`SessionEvent::Disconnected`].
+    pub fn spawn_deploy(params: DeployParams, sink: Arc<dyn SessionSink>) -> Self {
+        let DeployParams {
+            target,
+            credentials,
+            key,
+            known_hosts,
+            timeouts,
+        } = params;
+        let common = Common {
+            target,
+            credentials,
+            known_hosts,
+            timeouts,
+        };
+        Self::start(common, Purpose::Deploy(key), sink)
+    }
+
+    fn start(common: Common, purpose: Purpose, sink: Arc<dyn SessionSink>) -> Self {
         let (control, control_rx) = mpsc::channel(CONTROL_CAPACITY);
         let decision = DecisionSlot::default();
+        let prompt = PromptSlot::default();
         let flow = Arc::new(Flow::default());
         let cancel = CancellationToken::new();
         let task = SessionTask {
             control_rx,
             decision: decision.clone(),
+            prompt: prompt.clone(),
             flow: flow.clone(),
             cancel: cancel.clone(),
             sink,
         };
-        tokio::spawn(task.run(params));
+        tokio::spawn(task.run(common, purpose));
         Self {
             control,
             decision,
+            prompt,
             flow,
             cancel,
         }
@@ -216,6 +300,24 @@ impl SessionHandle {
         sender.send(accept).map_err(|_| SshError::NoPendingDecision)
     }
 
+    /// Transmet les réponses de l'utilisateur à la demande keyboard-interactive en attente,
+    /// ou l'annule (`None`). Il faut exactement une réponse par question ; sinon la demande
+    /// reste en attente et l'appel échoue.
+    pub fn answer_prompts(&self, answers: Option<PromptAnswers>) -> Result<(), SshError> {
+        let mut slot = self.prompt.lock().map_err(|_| SshError::NoPendingPrompt)?;
+        let pending = slot.take().ok_or(SshError::NoPendingPrompt)?;
+        if let Some(answers) = &answers
+            && answers.len() != pending.expected
+        {
+            *slot = Some(pending);
+            return Err(SshError::InvalidAnswers);
+        }
+        pending
+            .sender
+            .send(answers)
+            .map_err(|_| SshError::NoPendingPrompt)
+    }
+
     /// Ferme la session (sans effet si elle l'est déjà).
     pub fn close(&self) {
         self.cancel.cancel();
@@ -233,51 +335,111 @@ impl Drop for SessionHandle {
     }
 }
 
+/// Paramètres communs à une session et à un déploiement.
+struct Common {
+    target: Target,
+    credentials: Credentials,
+    known_hosts: Arc<KnownHosts>,
+    timeouts: Timeouts,
+}
+
+/// Issue d'une méthode d'authentification.
+enum AuthStep {
+    Success,
+    /// Échec (ou succès partiel) : méthodes que le serveur propose de poursuivre.
+    Failure(Vec<MethodKind>),
+}
+
+impl From<client::AuthResult> for AuthStep {
+    fn from(result: client::AuthResult) -> Self {
+        match result {
+            client::AuthResult::Success => Self::Success,
+            client::AuthResult::Failure {
+                remaining_methods, ..
+            } => Self::Failure(remaining_methods.to_vec()),
+        }
+    }
+}
+
+/// Attend une opération réseau de l'authentification, bornée par `limit`.
+async fn net<T>(
+    limit: Duration,
+    operation: impl Future<Output = Result<T, russh::Error>>,
+) -> Result<T, SshError> {
+    match timeout(limit, operation).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => {
+            tracing::debug!(%error, "erreur pendant l'authentification");
+            Err(SshError::ConnectionLost)
+        }
+        Err(_) => Err(SshError::Timeout),
+    }
+}
+
 struct SessionTask {
     control_rx: mpsc::Receiver<Control>,
     decision: DecisionSlot,
+    prompt: PromptSlot,
     flow: Arc<Flow>,
     cancel: CancellationToken,
     sink: Arc<dyn SessionSink>,
 }
 
 impl SessionTask {
-    async fn run(mut self, params: ConnectParams) {
-        let target = params.target.clone();
+    async fn run(mut self, common: Common, purpose: Purpose) {
+        let target = common.target.clone();
         tracing::debug!(%target, "ouverture d'une session SSH");
         let cancel = self.cancel.clone();
-        let established = tokio::select! {
+        let reason = tokio::select! {
             biased;
-            () = cancel.cancelled() => Err(SshError::SessionClosed),
-            result = self.establish(params) => result,
-        };
-        let reason = match established {
-            Ok((handle, writer, reader)) => self.io_loop(&handle, writer, reader).await,
-            Err(reason) => reason,
+            () = cancel.cancelled() => SshError::SessionClosed,
+            reason = self.drive(common, purpose) => reason,
         };
         tracing::debug!(%target, code = reason.code(), "fin de session SSH");
         self.sink.event(SessionEvent::Disconnected { reason });
     }
 
-    /// Connexion, clé d'hôte, authentification, PTY et shell.
-    async fn establish(
-        &mut self,
-        params: ConnectParams,
-    ) -> Result<
-        (
-            Handle<ClientHandler>,
-            ChannelWriteHalf<client::Msg>,
-            russh::ChannelReadHalf,
-        ),
-        SshError,
-    > {
-        let ConnectParams {
+    /// Connexion et authentification, puis shell interactif ou déploiement. Renvoie la cause
+    /// de la fin.
+    async fn drive(&mut self, common: Common, purpose: Purpose) -> SshError {
+        let limit = common.timeouts.auth;
+        let handle = match self.establish(common).await {
+            Ok(handle) => handle,
+            Err(reason) => return reason,
+        };
+        match purpose {
+            Purpose::Shell(size) => match timeout(limit, open_shell(&handle, size)).await {
+                Ok(Ok((writer, reader))) => {
+                    self.sink.event(SessionEvent::Connected);
+                    self.io_loop(&handle, writer, reader).await
+                }
+                Ok(Err(reason)) => reason,
+                Err(_) => SshError::Timeout,
+            },
+            Purpose::Deploy(key) => {
+                let result = deploy::run(&handle, &key, limit).await;
+                let _ = handle.disconnect(Disconnect::ByApplication, "", "").await;
+                match result {
+                    Ok(outcome) => {
+                        self.sink.event(SessionEvent::KeyDeployed {
+                            added: outcome == DeployOutcome::Added,
+                        });
+                        SshError::SessionEnded
+                    }
+                    Err(reason) => reason,
+                }
+            }
+        }
+    }
+
+    /// Connexion, clé d'hôte et authentification.
+    async fn establish(&mut self, common: Common) -> Result<Handle<ClientHandler>, SshError> {
+        let Common {
             target,
             credentials,
-            size,
             known_hosts,
             timeouts,
-        } = params;
+        } = common;
 
         let stream = timeout(timeouts.connect, connect_tcp(target.host(), target.port()))
             .await
@@ -312,15 +474,150 @@ impl SessionTask {
 
         self.sink.event(SessionEvent::Authenticating);
         let username = target.username().to_owned();
-        let opened = timeout(timeouts.auth, async {
-            authenticate(&mut handle, username, credentials).await?;
-            open_shell(&handle, size).await
-        })
-        .await
-        .map_err(|_| SshError::Timeout)??;
+        self.authenticate(&mut handle, username, credentials, &timeouts)
+            .await?;
+        Ok(handle)
+    }
 
-        self.sink.event(SessionEvent::Connected);
-        Ok((handle, opened.0, opened.1))
+    /// Authentification : la méthode `none` révèle les méthodes acceptées, puis la clé, le
+    /// mot de passe et enfin keyboard-interactive sont essayés selon ce que le serveur
+    /// propose, succès partiels compris (`AuthenticationMethods publickey,keyboard-interactive`).
+    /// Chaque moyen n'est utilisé qu'une fois ; les secrets sont détruits à la sortie.
+    async fn authenticate(
+        &self,
+        handle: &mut Handle<ClientHandler>,
+        username: String,
+        credentials: Credentials,
+        timeouts: &Timeouts,
+    ) -> Result<(), SshError> {
+        let (mut key, mut password) = match credentials {
+            Credentials::Password(password) => (None, Some(password)),
+            Credentials::PrivateKey(key) => (Some(key), None),
+            Credentials::KeyThenPassword(key, password) => (Some(key), Some(password)),
+            Credentials::Interactive => (None, None),
+        };
+        let limit = timeouts.auth;
+        let first = net(limit, handle.authenticate_none(username.clone())).await?;
+        let mut remaining = match AuthStep::from(first) {
+            AuthStep::Success => return Ok(()),
+            AuthStep::Failure(methods) => methods,
+        };
+        let mut interactive_tried = false;
+        loop {
+            let step = if remaining.contains(&MethodKind::PublicKey)
+                && let Some(key) = key.take()
+            {
+                key_auth(handle, username.clone(), key, limit).await?
+            } else if remaining.contains(&MethodKind::Password)
+                && let Some(password) = password.take()
+            {
+                // Mot de passe consommé : refusé ici, il ne sera pas resservi plus loin.
+                let result = net(
+                    limit,
+                    handle.authenticate_password(username.clone(), password.expose_secret()),
+                )
+                .await?;
+                AuthStep::from(result)
+            } else if remaining.contains(&MethodKind::KeyboardInteractive) && !interactive_tried {
+                interactive_tried = true;
+                self.keyboard_interactive(handle, username.clone(), &mut password, timeouts)
+                    .await?
+            } else {
+                return Err(SshError::AuthFailed);
+            };
+            match step {
+                AuthStep::Success => return Ok(()),
+                AuthStep::Failure(methods) => remaining = methods,
+            }
+        }
+    }
+
+    /// Authentification keyboard-interactive (AUTH-03). Le mot de passe connu, s'il n'a pas
+    /// encore servi, répond une seule fois à une question « Password: » sans écho ; toute
+    /// autre question est posée à l'utilisateur.
+    async fn keyboard_interactive(
+        &self,
+        handle: &mut Handle<ClientHandler>,
+        username: String,
+        password: &mut Option<SecretString>,
+        timeouts: &Timeouts,
+    ) -> Result<AuthStep, SshError> {
+        let limit = timeouts.auth;
+        let mut response = net(
+            limit,
+            handle.authenticate_keyboard_interactive_start(username, None::<String>),
+        )
+        .await?;
+        let mut rounds = 0;
+        loop {
+            let (name, instructions, prompts) = match response {
+                KeyboardInteractiveAuthResponse::Success => return Ok(AuthStep::Success),
+                KeyboardInteractiveAuthResponse::Failure {
+                    remaining_methods, ..
+                } => return Ok(AuthStep::Failure(remaining_methods.to_vec())),
+                KeyboardInteractiveAuthResponse::InfoRequest {
+                    name,
+                    instructions,
+                    prompts,
+                } => (name, instructions, prompts),
+            };
+            rounds += 1;
+            if rounds > MAX_PROMPT_ROUNDS {
+                return Err(SshError::AuthPromptInvalid);
+            }
+            let prompt = AuthPrompt::from_server(
+                &name,
+                &instructions,
+                prompts.into_iter().map(|p| (p.prompt, p.echo)),
+            )?;
+            let answers = if prompt.fields.is_empty() {
+                PromptAnswers::new(Vec::new())?
+            } else if prompt.is_single_password_question()
+                && let Some(password) = password.take()
+            {
+                tracing::debug!("question « mot de passe » : mot de passe enregistré envoyé");
+                PromptAnswers::new(vec![password])?
+            } else {
+                self.ask_user(prompt, timeouts.auth_prompt).await?
+            };
+            response = net(
+                limit,
+                handle.authenticate_keyboard_interactive_respond(answers.to_russh()),
+            )
+            .await?;
+        }
+    }
+
+    /// Pose les questions du serveur à l'utilisateur et attend ses réponses.
+    async fn ask_user(
+        &self,
+        prompt: AuthPrompt,
+        limit: Duration,
+    ) -> Result<PromptAnswers, SshError> {
+        let (sender, receiver) = oneshot::channel();
+        match self.prompt.lock() {
+            Ok(mut slot) => {
+                *slot = Some(PendingPrompt {
+                    expected: prompt.fields.len(),
+                    sender,
+                });
+            }
+            Err(_) => return Err(SshError::AuthFailed),
+        }
+        tracing::debug!(questions = prompt.fields.len(), "questions du serveur");
+        self.sink.event(SessionEvent::AuthPrompt(prompt));
+        let answers = match timeout(limit, receiver).await {
+            Ok(Ok(Some(answers))) => answers,
+            Ok(Ok(None) | Err(_)) => return Err(SshError::AuthCancelled),
+            Err(_) => {
+                if let Ok(mut slot) = self.prompt.lock() {
+                    slot.take();
+                }
+                return Err(SshError::AuthPromptTimeout);
+            }
+        };
+        self.sink.event(SessionEvent::Authenticating);
+        Ok(answers)
     }
 
     /// Boucle d'entrée/sortie du shell. Renvoie la cause de la fin de session.
@@ -431,68 +728,20 @@ async fn connect_tcp(host: &str, port: u16) -> Result<TcpStream, SshError> {
     Err(last)
 }
 
-async fn authenticate(
-    handle: &mut Handle<ClientHandler>,
-    username: String,
-    credentials: Credentials,
-) -> Result<(), SshError> {
-    let auth_error = |error: russh::Error| {
-        tracing::debug!(%error, "erreur pendant l'authentification");
-        SshError::ConnectionLost
-    };
-    let result = match credentials {
-        Credentials::Password(password) => {
-            password_auth(handle, username, &password, auth_error).await?
-        }
-        Credentials::PrivateKey(key) => key_auth(handle, username, key, auth_error).await?,
-        Credentials::KeyThenPassword(key, password) => {
-            let by_key = key_auth(handle, username.clone(), key, auth_error).await?;
-            if by_key {
-                true
-            } else {
-                password_auth(handle, username, &password, auth_error).await?
-            }
-        }
-    };
-    if result {
-        Ok(())
-    } else {
-        Err(SshError::AuthFailed)
-    }
-}
-
-async fn password_auth(
-    handle: &mut Handle<ClientHandler>,
-    username: String,
-    password: &SecretString,
-    auth_error: impl Fn(russh::Error) -> SshError,
-) -> Result<bool, SshError> {
-    let result = handle
-        .authenticate_password(username, password.expose_secret())
-        .await
-        .map_err(auth_error)?;
-    Ok(result.success())
-}
-
 async fn key_auth(
     handle: &mut Handle<ClientHandler>,
     username: String,
     key: Arc<PrivateKey>,
-    auth_error: impl Fn(russh::Error) -> SshError,
-) -> Result<bool, SshError> {
+    limit: Duration,
+) -> Result<AuthStep, SshError> {
     // Signature RSA toujours en SHA-2, même si le serveur n'annonce rien : jamais SHA-1.
-    let hash = handle
-        .best_supported_rsa_hash()
-        .await
-        .map_err(&auth_error)?
+    let hash = net(limit, handle.best_supported_rsa_hash())
+        .await?
         .flatten()
         .or(Some(HashAlg::Sha512));
     let key = PrivateKeyWithHashAlg::new(key, hash);
-    let result = handle
-        .authenticate_publickey(username, key)
-        .await
-        .map_err(&auth_error)?;
-    Ok(result.success())
+    let result = net(limit, handle.authenticate_publickey(username, key)).await?;
+    Ok(AuthStep::from(result))
 }
 
 async fn open_shell(

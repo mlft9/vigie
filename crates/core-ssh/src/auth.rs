@@ -1,4 +1,4 @@
-//! Moyens d'authentification (AUTH-01, AUTH-02) et chargement des clés privées.
+//! Moyens d'authentification (AUTH-01, AUTH-02, AUTH-03) et chargement des clés privées.
 //!
 //! Les secrets restent dans des types qui s'effacent de la mémoire : `SecretString` pour le mot
 //! de passe et la passphrase, `Zeroizing` pour le contenu brut du fichier de clé, et la clé
@@ -33,6 +33,9 @@ pub enum Credentials {
     /// Identité du coffre avec clé **et** mot de passe : la clé est essayée d'abord, le mot de
     /// passe ensuite si le serveur la refuse (HST-03).
     KeyThenPassword(Arc<PrivateKey>, SecretString),
+    /// Aucun secret fourni d'avance : tout est demandé à l'utilisateur au fil des questions
+    /// du serveur (keyboard-interactive, AUTH-03).
+    Interactive,
 }
 
 impl fmt::Debug for Credentials {
@@ -49,6 +52,7 @@ impl fmt::Debug for Credentials {
                 "Credentials::KeyThenPassword({}, <masquée>, <masqué>)",
                 key.algorithm().as_str()
             ),
+            Self::Interactive => f.write_str("Credentials::Interactive"),
         }
     }
 }

@@ -8,15 +8,16 @@
 // panique, comme les tests eux-mêmes (clippy.toml ne couvre que les fonctions #[test]).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use core_ssh::known_hosts::fingerprint;
 use core_ssh::{
-    ConnectParams, Credentials, HIGH_WATERMARK, KnownHosts, SessionEvent, SessionHandle,
-    SessionSink, SshError, Target, TermSize, Timeouts,
+    AuthorizedKeyLine, ConnectParams, Credentials, DeployParams, HIGH_WATERMARK, KnownHosts,
+    PromptAnswers, SessionEvent, SessionHandle, SessionSink, SshError, Target, TermSize, Timeouts,
 };
+use russh::MethodKind;
 use russh::keys::ssh_key::LineEnding;
 use russh::keys::{Algorithm, PrivateKey, PublicKey};
 use russh::server::{self, Auth, Msg, Session};
@@ -26,14 +27,58 @@ use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 
 const PASSWORD: &str = "mot-de-passe-de-test";
+const CODE: &str = "123456";
 const WAIT: Duration = Duration::from_secs(10);
 
 // ---------------------------------------------------------------- serveur de test
 
+/// Comportement keyboard-interactive du serveur de test.
+#[derive(Clone, Copy, Default)]
+enum Kbd {
+    /// Méthode refusée (comportement par défaut de russh).
+    #[default]
+    Reject,
+    /// Une question « Verification code: ».
+    Code,
+    /// Comme PAM avec google-authenticator : « Password: » puis « Verification code: ».
+    PasswordThenCode,
+    /// Une demande de neuf questions (au-delà de la limite).
+    Flood,
+    /// Des demandes vides sans fin.
+    EndlessEmpty,
+}
+
+#[derive(Clone, Default)]
+struct Options {
+    authorized_key: Option<PublicKey>,
+    kbd: Kbd,
+    /// Méthodes annoncées par le serveur (`None` : toutes celles de russh).
+    methods: Option<Vec<MethodKind>>,
+    /// Mot de passe correct = succès partiel, keyboard-interactive exigé ensuite.
+    password_partial: bool,
+    /// Sortie et code de retour de la commande exécutée (déploiement).
+    exec_reply: Option<(&'static str, u32)>,
+}
+
 #[derive(Clone)]
 struct TestServer {
-    authorized_key: Option<PublicKey>,
+    options: Options,
     auth_attempts: Arc<AtomicUsize>,
+    /// Réponses keyboard-interactive reçues, dans l'ordre.
+    answers: Arc<Mutex<Vec<String>>>,
+    /// Commande reçue par `exec` et entrée standard associée.
+    exec_command: Arc<Mutex<Option<String>>>,
+    stdin: Arc<Mutex<Vec<u8>>>,
+    exec_channel: Option<ChannelId>,
+    stage: usize,
+}
+
+fn question(text: &str) -> Auth {
+    Auth::Partial {
+        name: "".into(),
+        instructions: "".into(),
+        prompts: vec![(text.to_owned().into(), false)].into(),
+    }
 }
 
 impl server::Handler for TestServer {
@@ -41,11 +86,82 @@ impl server::Handler for TestServer {
 
     async fn auth_password(&mut self, _user: &str, password: &str) -> Result<Auth, Self::Error> {
         self.auth_attempts.fetch_add(1, Ordering::SeqCst);
-        Ok(if password == PASSWORD {
-            Auth::Accept
-        } else {
-            Auth::reject()
+        Ok(
+            match (password == PASSWORD, self.options.password_partial) {
+                (true, false) => Auth::Accept,
+                (true, true) => Auth::Reject {
+                    proceed_with_methods: Some((&[MethodKind::KeyboardInteractive][..]).into()),
+                    partial_success: true,
+                },
+                (false, _) => Auth::reject(),
+            },
+        )
+    }
+
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        _user: &str,
+        _submethods: &str,
+        response: Option<server::Response<'a>>,
+    ) -> Result<Auth, Self::Error> {
+        let answers: Vec<String> = response
+            .map(|r| {
+                r.map(|b| String::from_utf8_lossy(&b).into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.answers.lock().unwrap().extend(answers.iter().cloned());
+        let stage = self.stage;
+        self.stage += 1;
+        Ok(match (self.options.kbd, stage) {
+            (Kbd::Reject, _) => Auth::reject(),
+            (Kbd::Code, 0) => question("Verification code: "),
+            (Kbd::Code, _) if answers == [CODE] => Auth::Accept,
+            (Kbd::PasswordThenCode, 0) => question("Password: "),
+            (Kbd::PasswordThenCode, 1) if answers == [PASSWORD] => question("Verification code: "),
+            (Kbd::PasswordThenCode, 2) if answers == [CODE] => Auth::Accept,
+            (Kbd::Flood, _) => Auth::Partial {
+                name: "".into(),
+                instructions: "".into(),
+                prompts: (0..9)
+                    .map(|i| (format!("q{i}").into(), false))
+                    .collect::<Vec<_>>()
+                    .into(),
+            },
+            (Kbd::EndlessEmpty, _) => Auth::Partial {
+                name: "".into(),
+                instructions: "".into(),
+                prompts: Vec::new().into(),
+            },
+            _ => Auth::reject(),
         })
+    }
+
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        *self.exec_command.lock().unwrap() = Some(String::from_utf8_lossy(data).into_owned());
+        self.exec_channel = Some(channel);
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn channel_eof(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if self.exec_channel == Some(channel) {
+            let (output, status) = self.options.exec_reply.unwrap_or(("YOUNJI_ADDED\n", 0));
+            session.data(channel, output.as_bytes().to_vec())?;
+            session.exit_status_request(channel, status)?;
+            session.eof(channel)?;
+            session.close(channel)?;
+        }
+        Ok(())
     }
 
     async fn auth_publickey_offered(
@@ -121,6 +237,10 @@ impl server::Handler for TestServer {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if self.exec_channel == Some(channel) {
+            self.stdin.lock().unwrap().extend_from_slice(data);
+            return Ok(());
+        }
         match data {
             b"exit\r" => {
                 session.exit_status_request(channel, 0)?;
@@ -142,7 +262,7 @@ impl server::Handler for TestServer {
 
 impl TestServer {
     fn key_auth(&self, key: &PublicKey) -> Auth {
-        match &self.authorized_key {
+        match &self.options.authorized_key {
             Some(authorized) if authorized.key_data() == key.key_data() => Auth::Accept,
             _ => Auth::reject(),
         }
@@ -153,25 +273,48 @@ struct Fixture {
     port: u16,
     host_key: PublicKey,
     auth_attempts: Arc<AtomicUsize>,
+    answers: Arc<Mutex<Vec<String>>>,
+    exec_command: Arc<Mutex<Option<String>>>,
+    stdin: Arc<Mutex<Vec<u8>>>,
     known_hosts: Arc<KnownHosts>,
     _dir: tempfile::TempDir,
 }
 
 async fn start_server(authorized_key: Option<PublicKey>) -> Fixture {
+    start_server_with(Options {
+        authorized_key,
+        ..Options::default()
+    })
+    .await
+}
+
+async fn start_server_with(options: Options) -> Fixture {
     let host_key = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
     let host_public = host_key.public_key().clone();
-    let config = Arc::new(server::Config {
+    let mut config = server::Config {
         keys: vec![host_key],
         auth_rejection_time: Duration::from_millis(10),
         auth_rejection_time_initial: Some(Duration::from_millis(0)),
         ..server::Config::default()
-    });
+    };
+    if let Some(methods) = &options.methods {
+        config.methods = methods.as_slice().into();
+    }
+    let config = Arc::new(config);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let auth_attempts = Arc::new(AtomicUsize::new(0));
+    let answers = Arc::default();
+    let exec_command = Arc::default();
+    let stdin = Arc::default();
     let handler = TestServer {
-        authorized_key,
+        options,
         auth_attempts: auth_attempts.clone(),
+        answers: Arc::clone(&answers),
+        exec_command: Arc::clone(&exec_command),
+        stdin: Arc::clone(&stdin),
+        exec_channel: None,
+        stage: 0,
     };
     tokio::spawn(async move {
         while let Ok((socket, _)) = listener.accept().await {
@@ -190,6 +333,9 @@ async fn start_server(authorized_key: Option<PublicKey>) -> Fixture {
         port,
         host_key: host_public,
         auth_attempts,
+        answers,
+        exec_command,
+        stdin,
         known_hosts,
         _dir: dir,
     }
@@ -220,21 +366,46 @@ struct Client {
     output: Vec<u8>,
 }
 
+fn test_timeouts() -> Timeouts {
+    Timeouts {
+        host_key_decision: Duration::from_secs(5),
+        auth_prompt: Duration::from_secs(5),
+        ..Timeouts::default()
+    }
+}
+
 impl Client {
     fn connect(fixture: &Fixture, credentials: Credentials) -> Self {
+        Self::connect_with(fixture, credentials, test_timeouts())
+    }
+
+    fn connect_with(fixture: &Fixture, credentials: Credentials, timeouts: Timeouts) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let params = ConnectParams {
             target: Target::new("127.0.0.1", u32::from(fixture.port), "testeur").unwrap(),
             credentials,
             size: TermSize::new(80, 24).unwrap(),
             known_hosts: fixture.known_hosts.clone(),
-            timeouts: Timeouts {
-                host_key_decision: Duration::from_secs(5),
-                ..Timeouts::default()
-            },
+            timeouts,
         };
         Self {
             handle: SessionHandle::spawn(params, Arc::new(ChannelSink(tx))),
+            rx,
+            output: Vec::new(),
+        }
+    }
+
+    fn deploy(fixture: &Fixture, credentials: Credentials, key: AuthorizedKeyLine) -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let params = DeployParams {
+            target: Target::new("127.0.0.1", u32::from(fixture.port), "testeur").unwrap(),
+            credentials,
+            key,
+            known_hosts: fixture.known_hosts.clone(),
+            timeouts: test_timeouts(),
+        };
+        Self {
+            handle: SessionHandle::spawn_deploy(params, Arc::new(ChannelSink(tx))),
             rx,
             output: Vec::new(),
         }
@@ -619,4 +790,316 @@ async fn identity_with_key_and_password_falls_back_to_the_password() {
     let mut client = Client::connect(&fixture, credentials);
     client.accept_and_connect().await;
     client.wait_output("pret").await;
+}
+
+// ---------------------------------------------------------------- keyboard-interactive (AUTH-03)
+
+fn answers(values: &[&str]) -> Option<PromptAnswers> {
+    Some(
+        PromptAnswers::new(
+            values
+                .iter()
+                .map(|v| SecretString::from((*v).to_owned()))
+                .collect(),
+        )
+        .unwrap(),
+    )
+}
+
+impl Client {
+    /// Attend la prochaine demande du serveur et renvoie le texte de ses questions.
+    async fn expect_prompt(&mut self) -> Vec<(String, bool)> {
+        match self.next_event().await {
+            SessionEvent::AuthPrompt(prompt) => prompt
+                .fields
+                .into_iter()
+                .map(|f| (f.text, f.echo))
+                .collect(),
+            other => panic!("attendu AuthPrompt, reçu {other:?}"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn keyboard_interactive_questions_are_asked_and_answered() {
+    let fixture = start_server_with(Options {
+        kbd: Kbd::Code,
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::connect(&fixture, Credentials::Interactive);
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(
+        client.expect_prompt().await,
+        vec![("Verification code: ".to_owned(), false)]
+    );
+    // Mauvais nombre de réponses : refusé, la question reste en attente.
+    assert_eq!(
+        client.handle.answer_prompts(answers(&[CODE, "en trop"])),
+        Err(SshError::InvalidAnswers)
+    );
+    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    assert_eq!(client.next_event().await, SessionEvent::Connected);
+    client.wait_output("pret").await;
+    assert_eq!(*fixture.answers.lock().unwrap(), vec![CODE.to_owned()]);
+    // Plus rien n'est attendu.
+    assert_eq!(
+        client.handle.answer_prompts(answers(&[CODE])),
+        Err(SshError::NoPendingPrompt)
+    );
+}
+
+#[tokio::test]
+async fn stored_password_answers_the_pam_password_question_only() {
+    // `AuthenticationMethods keyboard-interactive` avec PAM + google-authenticator : la
+    // méthode `password` n'est pas proposée, le mot de passe est demandé par PAM.
+    let fixture = start_server_with(Options {
+        kbd: Kbd::PasswordThenCode,
+        methods: Some(vec![MethodKind::KeyboardInteractive]),
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::connect(&fixture, password(PASSWORD));
+    client.accept_and_connect_until_auth().await;
+    // Seul le code est demandé à l'utilisateur.
+    assert_eq!(
+        client.expect_prompt().await,
+        vec![("Verification code: ".to_owned(), false)]
+    );
+    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    assert_eq!(client.next_event().await, SessionEvent::Connected);
+    assert_eq!(
+        *fixture.answers.lock().unwrap(),
+        vec![PASSWORD.to_owned(), CODE.to_owned()]
+    );
+    // La méthode `password` n'a jamais été tentée.
+    assert_eq!(fixture.auth_attempts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn without_stored_password_every_question_goes_to_the_user() {
+    let fixture = start_server_with(Options {
+        kbd: Kbd::PasswordThenCode,
+        methods: Some(vec![MethodKind::KeyboardInteractive]),
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::connect(&fixture, Credentials::Interactive);
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(
+        client.expect_prompt().await,
+        vec![("Password: ".to_owned(), false)]
+    );
+    client.handle.answer_prompts(answers(&[PASSWORD])).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    assert_eq!(
+        client.expect_prompt().await,
+        vec![("Verification code: ".to_owned(), false)]
+    );
+    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    assert_eq!(client.next_event().await, SessionEvent::Connected);
+}
+
+#[tokio::test]
+async fn password_then_code_after_partial_success() {
+    // `AuthenticationMethods password,keyboard-interactive`.
+    let fixture = start_server_with(Options {
+        kbd: Kbd::Code,
+        password_partial: true,
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::connect(&fixture, password(PASSWORD));
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(
+        client.expect_prompt().await,
+        vec![("Verification code: ".to_owned(), false)]
+    );
+    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    assert_eq!(client.next_event().await, SessionEvent::Connected);
+    // Le mot de passe, déjà accepté par la méthode `password`, n'est pas renvoyé.
+    assert_eq!(*fixture.answers.lock().unwrap(), vec![CODE.to_owned()]);
+}
+
+#[tokio::test]
+async fn wrong_code_is_refused() {
+    let fixture = start_server_with(Options {
+        kbd: Kbd::Code,
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::connect(&fixture, Credentials::Interactive);
+    client.accept_and_connect_until_auth().await;
+    client.expect_prompt().await;
+    client.handle.answer_prompts(answers(&["000000"])).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    assert_eq!(
+        client.next_event().await,
+        disconnected(SshError::AuthFailed)
+    );
+}
+
+#[tokio::test]
+async fn cancelling_the_questions_aborts() {
+    let fixture = start_server_with(Options {
+        kbd: Kbd::Code,
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::connect(&fixture, Credentials::Interactive);
+    client.accept_and_connect_until_auth().await;
+    client.expect_prompt().await;
+    client.handle.answer_prompts(None).unwrap();
+    assert_eq!(
+        client.next_event().await,
+        disconnected(SshError::AuthCancelled)
+    );
+    assert_eq!(
+        client.handle.answer_prompts(answers(&[CODE])),
+        Err(SshError::NoPendingPrompt)
+    );
+}
+
+#[tokio::test]
+async fn unanswered_questions_time_out() {
+    let fixture = start_server_with(Options {
+        kbd: Kbd::Code,
+        ..Options::default()
+    })
+    .await;
+    let timeouts = Timeouts {
+        auth_prompt: Duration::from_millis(200),
+        ..test_timeouts()
+    };
+    let mut client = Client::connect_with(&fixture, Credentials::Interactive, timeouts);
+    client.accept_and_connect_until_auth().await;
+    client.expect_prompt().await;
+    assert_eq!(
+        client.next_event().await,
+        disconnected(SshError::AuthPromptTimeout)
+    );
+    assert_eq!(
+        client.handle.answer_prompts(answers(&[CODE])),
+        Err(SshError::NoPendingPrompt)
+    );
+}
+
+#[tokio::test]
+async fn abusive_servers_are_cut_short() {
+    for kbd in [Kbd::Flood, Kbd::EndlessEmpty] {
+        let fixture = start_server_with(Options {
+            kbd,
+            ..Options::default()
+        })
+        .await;
+        let mut client = Client::connect(&fixture, Credentials::Interactive);
+        client.accept_and_connect_until_auth().await;
+        // Aucune question n'arrive jusqu'à l'utilisateur.
+        assert_eq!(
+            client.next_event().await,
+            disconnected(SshError::AuthPromptInvalid)
+        );
+    }
+}
+
+#[tokio::test]
+async fn answers_are_refused_when_nothing_is_asked() {
+    let fixture = start_server(None).await;
+    let mut client = Client::connect(&fixture, password(PASSWORD));
+    client.accept_and_connect().await;
+    assert_eq!(
+        client.handle.answer_prompts(answers(&["x"])),
+        Err(SshError::NoPendingPrompt)
+    );
+}
+
+// ---------------------------------------------------------------- déploiement (KEY-03)
+
+fn new_key_line() -> AuthorizedKeyLine {
+    let key = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    AuthorizedKeyLine::from_private(&key).unwrap()
+}
+
+#[tokio::test]
+async fn deploy_runs_a_constant_command_and_sends_the_key_on_stdin() {
+    let fixture = start_server(None).await;
+    let line = new_key_line();
+    let mut client = Client::deploy(&fixture, password(PASSWORD), line.clone());
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(
+        client.next_event().await,
+        SessionEvent::KeyDeployed { added: true }
+    );
+    assert_eq!(
+        client.next_event().await,
+        disconnected(SshError::SessionEnded)
+    );
+    assert_eq!(
+        fixture.exec_command.lock().unwrap().as_deref(),
+        Some(core_ssh::deploy::deploy_command().as_str())
+    );
+    assert_eq!(
+        *fixture.stdin.lock().unwrap(),
+        format!("{}\n", line.as_str()).into_bytes()
+    );
+}
+
+#[tokio::test]
+async fn deploy_reports_an_existing_key_and_failures() {
+    let fixture = start_server_with(Options {
+        exec_reply: Some(("YOUNJI_PRESENT\n", 0)),
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::deploy(&fixture, password(PASSWORD), new_key_line());
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(
+        client.next_event().await,
+        SessionEvent::KeyDeployed { added: false }
+    );
+
+    // Shell non POSIX ou droits insuffisants : code de retour non nul.
+    let fixture = start_server_with(Options {
+        exec_reply: Some(("sh: not found\n", 127)),
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::deploy(&fixture, password(PASSWORD), new_key_line());
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(
+        client.next_event().await,
+        disconnected(SshError::DeployFailed)
+    );
+
+    // Authentification refusée : rien n'est exécuté.
+    let fixture = start_server(None).await;
+    let mut client = Client::deploy(&fixture, password("faux"), new_key_line());
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(
+        client.next_event().await,
+        disconnected(SshError::AuthFailed)
+    );
+    assert!(fixture.exec_command.lock().unwrap().is_none());
+}
+
+#[tokio::test]
+async fn deploy_goes_through_two_factor_authentication() {
+    let fixture = start_server_with(Options {
+        kbd: Kbd::Code,
+        ..Options::default()
+    })
+    .await;
+    let mut client = Client::deploy(&fixture, Credentials::Interactive, new_key_line());
+    client.accept_and_connect_until_auth().await;
+    client.expect_prompt().await;
+    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    assert_eq!(client.next_event().await, SessionEvent::Authenticating);
+    assert_eq!(
+        client.next_event().await,
+        SessionEvent::KeyDeployed { added: true }
+    );
 }
