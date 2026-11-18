@@ -539,8 +539,23 @@ async fn download_file<F: RemoteFs>(
             SshError::LocalIo
         }
     })?;
+    mark_from_internet(&target);
     Ok(true)
 }
+
+/// Sous Windows, marque le fichier téléchargé comme venant d'Internet (« Mark-of-the-Web »,
+/// flux `Zone.Identifier`, zone 3) : SmartScreen et le mode protégé d'Office s'appliquent à
+/// un exécutable ou un document récupéré d'un serveur. Au mieux : un système de fichiers sans
+/// flux alternatifs (FAT, réseau) n'empêche pas le téléchargement.
+#[cfg(windows)]
+pub(crate) fn mark_from_internet(path: &Path) {
+    let mut stream = path.as_os_str().to_owned();
+    stream.push(":Zone.Identifier");
+    let _ = std::fs::write(PathBuf::from(stream), b"[ZoneTransfer]\r\nZoneId=3\r\n");
+}
+
+#[cfg(not(windows))]
+pub(crate) fn mark_from_internet(_path: &Path) {}
 
 /// Premier nom libre `nom (n).ext` dans un dossier local.
 fn free_local_name(parent: &Path, name: &str) -> Result<PathBuf, SshError> {

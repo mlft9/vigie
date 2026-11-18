@@ -374,14 +374,13 @@ describe('TerminalSession', () => {
     expect(tab()?.sessionId).toBe(7);
   });
 
-  it('envoie l’intégration au prompt uniquement sur demande, en texte constant', async () => {
+  it('insère l’intégration au prompt sur demande, comme un collage, sans la valider', async () => {
     const { session, emit } = await connected();
     emit({ type: 'connected' });
-    expect(ipc.sshWrite).not.toHaveBeenCalled();
+    expect(fake(session).paste).not.toHaveBeenCalled();
     session.sendShellIntegration();
-    await vi.waitFor(() => {
-      expect(ipc.sshWrite).toHaveBeenCalledWith(7, SHELL_INTEGRATION, false);
-    });
+    expect(fake(session).paste).toHaveBeenCalledWith(SHELL_INTEGRATION);
+    expect(ipc.sshWrite).not.toHaveBeenCalled();
   });
 
   it('ferme les onglets SFTP avec leur terminal', async () => {

@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use core_ssh::sftp::edit::{DEFAULT_POLL, EditEvent, EditSession, EditSink};
-use core_ssh::sftp::local::{LocalListing, LocalRoot};
+use core_ssh::sftp::local::{LocalListing, LocalRoot, RootPolicy};
 use core_ssh::sftp::ops::{self, RemoteEntry, RemoteListing};
 use core_ssh::sftp::queue::{
     Direction, JobId, JobSpec, TransferEvent, TransferQueue, TransferSink,
@@ -23,10 +23,10 @@ use core_ssh::sftp::transfer::{
 use core_ssh::sftp::{EntryKind, RemoteMeta, RemotePath};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, FilePath};
 
-use crate::editor::{EDIT_SUFFIX, open_in_editor};
+use crate::editor::open_in_editor;
 use crate::error::AppError;
 use crate::sftp_state::{EditId, LocalRootId, MAX_EDITS, SftpEntry, SftpId};
 use crate::state::{SessionId, SessionManager};
@@ -285,27 +285,6 @@ impl EditSink for EditChannelSink {
 
 // ---------------------------------------------------------------------- requêtes
 
-/// Politique de conflit demandée par l'interface.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ConflictPolicyDto {
-    Ask,
-    Overwrite,
-    Skip,
-    Rename,
-}
-
-impl From<ConflictPolicyDto> for ConflictPolicy {
-    fn from(policy: ConflictPolicyDto) -> Self {
-        match policy {
-            ConflictPolicyDto::Ask => Self::Ask,
-            ConflictPolicyDto::Overwrite => Self::Overwrite,
-            ConflictPolicyDto::Skip => Self::Skip,
-            ConflictPolicyDto::Rename => Self::Rename,
-        }
-    }
-}
-
 /// Réponse à un conflit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -385,6 +364,48 @@ async fn blocking<T: Send + 'static>(
     tauri::async_runtime::spawn_blocking(work)
         .await
         .map_err(|_| AppError::INTERNAL)?
+}
+
+/// Dossiers qui ne peuvent pas devenir une racine locale (ADR-034) : racine d'un disque,
+/// dossier personnel entier et ses ancêtres, `~/.ssh`, dossiers de données de Younji (coffre,
+/// journaux, copies d'édition).
+fn root_policy(app: &AppHandle) -> RootPolicy {
+    let paths = app.path();
+    let home = paths.home_dir().ok();
+    let own: Vec<PathBuf> = [
+        paths.app_data_dir().ok(),
+        paths.app_local_data_dir().ok(),
+        paths.app_cache_dir().ok(),
+        paths.app_config_dir().ok(),
+        paths.app_log_dir().ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let ancestors: Vec<PathBuf> = home.iter().cloned().chain(own.iter().cloned()).collect();
+    let inside: Vec<PathBuf> = home
+        .iter()
+        .map(|h| h.join(".ssh"))
+        .chain(own.iter().cloned())
+        .collect();
+    RootPolicy::new(&ancestors, &inside)
+}
+
+/// Dossier privé des copies d'édition (dans les données locales de l'application, 0700).
+pub fn edit_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|_| AppError::INTERNAL)?
+        .join("edits");
+    std::fs::create_dir_all(&dir).map_err(|_| AppError::from(core_ssh::SshError::LocalIo))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| AppError::from(core_ssh::SshError::LocalIo))?;
+    }
+    Ok(dir)
 }
 
 fn into_path(picked: FilePath) -> Result<PathBuf, AppError> {
@@ -555,7 +576,6 @@ pub async fn sftp_download(
     sftp_id: SftpId,
     paths: Vec<String>,
     target: DownloadTarget,
-    policy: ConflictPolicyDto,
     state: State<'_, SessionManager>,
 ) -> Result<Option<JobId>, AppError> {
     if paths.is_empty() || paths.len() > MAX_SELECTION {
@@ -571,8 +591,9 @@ pub async fn sftp_download(
             let Some(dir) = pick_folder(&app, &window).await? else {
                 return Ok(None);
             };
+            let policy = root_policy(&app);
             blocking(move || {
-                let root = LocalRoot::new(&dir)?;
+                let root = LocalRoot::with_policy(&dir, &policy)?;
                 Ok(LocalDest {
                     dir: root.path().to_path_buf(),
                     root,
@@ -594,7 +615,8 @@ pub async fn sftp_download(
     let job = entry.queue.submit(JobSpec::Download(Download {
         sources,
         dest,
-        policy: policy.into(),
+        // Toujours « demander » : l'interface ne peut pas imposer l'écrasement d'avance.
+        policy: ConflictPolicy::Ask,
     }))?;
     Ok(Some(job))
 }
@@ -607,7 +629,6 @@ pub async fn sftp_upload(
     sftp_id: SftpId,
     source: UploadSource,
     remote_dir: String,
-    policy: ConflictPolicyDto,
     state: State<'_, SessionManager>,
 ) -> Result<Option<JobId>, AppError> {
     let dest = remote(&remote_dir)?;
@@ -648,7 +669,8 @@ pub async fn sftp_upload(
     let job = entry.queue.submit(JobSpec::Upload(Upload {
         sources,
         dest,
-        policy: policy.into(),
+        // Toujours « demander » : l'interface ne peut pas imposer l'écrasement d'avance.
+        policy: ConflictPolicy::Ask,
     }))?;
     Ok(Some(job))
 }
@@ -682,6 +704,7 @@ pub fn sftp_conflict_decision(
 /// Ouvre un fichier distant dans l'éditeur de texte local ; chaque enregistrement est renvoyé.
 #[tauri::command]
 pub async fn sftp_edit(
+    app: AppHandle,
     sftp_id: SftpId,
     path: String,
     on_event: Channel<SftpEventDto>,
@@ -694,6 +717,7 @@ pub async fn sftp_edit(
         return Err(AppError::TOO_MANY_EDITS);
     }
     let entry = entry(&state, sftp_id)?;
+    let parent = edit_dir(&app)?;
     let sink = Arc::new(EditChannelSink {
         channel: on_event,
         edit: std::sync::OnceLock::new(),
@@ -701,7 +725,7 @@ pub async fn sftp_edit(
     let (session, local) = EditSession::start(
         entry.client.clone(),
         path,
-        EDIT_SUFFIX,
+        &parent,
         DEFAULT_POLL,
         sink.clone(),
     )
@@ -744,9 +768,16 @@ pub async fn local_pick_root(
     let Some(path) = pick_folder(&app, &window).await? else {
         return Ok(None);
     };
-    let root = blocking(move || Ok(LocalRoot::new(&path)?)).await?;
+    let policy = root_policy(&app);
+    let root = blocking(move || Ok(LocalRoot::with_policy(&path, &policy)?)).await?;
     let name = root.display_name().chars().take(MAX_DISPLAY_NAME).collect();
     let id = state.sftp().remember_root(root)?;
+    // Un verrouillage a pu survenir pendant la boîte de dialogue : la racine ne doit pas lui
+    // survivre (elle aurait été mémorisée après l'effacement).
+    if !vault.is_unlocked() {
+        state.sftp().close_all();
+        return Err(AppError::VAULT_LOCKED);
+    }
     Ok(Some(LocalRootRef { id, name }))
 }
 
@@ -787,8 +818,8 @@ mod tests {
             serde_json::from_str::<UploadSource>(r#"{"kind":"pickFiles","paths":["/etc"]}"#)
                 .is_err()
         );
-        assert!(serde_json::from_str::<ConflictPolicyDto>(r#""ask""#).is_ok());
-        assert!(serde_json::from_str::<ConflictPolicyDto>(r#""always""#).is_err());
+        assert!(serde_json::from_str::<ConflictActionDto>(r#""skip""#).is_ok());
+        assert!(serde_json::from_str::<ConflictActionDto>(r#""always""#).is_err());
     }
 
     #[test]

@@ -428,12 +428,13 @@ export class TerminalSession {
   }
 
   /**
-   * Envoie au shell l'intégration au prompt (OSC 7) pour que le panneau SFTP suive les `cd`.
-   * Uniquement sur demande explicite de l'utilisateur ; le texte est constant.
+   * Insère l'intégration au prompt (OSC 7) pour que le panneau SFTP suive les `cd`, comme un
+   * collage (encadré si le programme distant l'a demandé), **sans la valider** : l'utilisateur
+   * la relit et appuie sur Entrée. Uniquement sur demande explicite ; le texte est constant.
    */
   sendShellIntegration(): void {
     if (this.sessionId === null) return;
-    this.input?.push(SHELL_INTEGRATION);
+    this.terminal.paste(SHELL_INTEGRATION);
     this.focus();
   }
 

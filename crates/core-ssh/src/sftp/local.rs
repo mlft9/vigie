@@ -40,6 +40,55 @@ pub struct LocalListing {
     pub truncated: bool,
 }
 
+/// Dossiers qui ne peuvent pas devenir une racine locale (ADR-034). Une racine reste une
+/// autorisation durable (jusqu'au verrouillage) : une interface compromise pourrait y lire,
+/// créer ou écraser des fichiers. On refuse donc :
+/// - la racine d'un disque ou du système de fichiers ;
+/// - un dossier **égal à ou ancêtre de** l'un des chemins de `ancestors_forbidden` (dossier
+///   personnel, données de Younji) : `~` donnerait accès à `.bashrc`, au dossier Démarrage,
+///   à `~/.ssh` et au coffre ;
+/// - un dossier **égal à ou situé dans** l'un des chemins de `inside_forbidden` (`~/.ssh`,
+///   données de Younji, dont le coffre chiffré).
+#[derive(Debug, Clone, Default)]
+pub struct RootPolicy {
+    ancestors_forbidden: Vec<PathBuf>,
+    inside_forbidden: Vec<PathBuf>,
+}
+
+impl RootPolicy {
+    /// Politique à partir de chemins (canonicalisés ici ; un chemin inexistant est ignoré).
+    pub fn new(ancestors_forbidden: &[PathBuf], inside_forbidden: &[PathBuf]) -> Self {
+        let canonical = |paths: &[PathBuf]| -> Vec<PathBuf> {
+            paths
+                .iter()
+                .filter_map(|p| std::fs::canonicalize(p).ok())
+                .collect()
+        };
+        Self {
+            ancestors_forbidden: canonical(ancestors_forbidden),
+            inside_forbidden: canonical(inside_forbidden),
+        }
+    }
+
+    /// Vérifie un dossier **canonicalisé**.
+    pub fn check(&self, canonical: &Path) -> Result<(), SshError> {
+        let is_fs_root = canonical.parent().is_none();
+        let ancestor_of_protected = self
+            .ancestors_forbidden
+            .iter()
+            .any(|protected| protected.starts_with(canonical));
+        let inside_protected = self
+            .inside_forbidden
+            .iter()
+            .any(|protected| canonical.starts_with(protected));
+        if is_fs_root || ancestor_of_protected || inside_protected {
+            Err(SshError::LocalRootForbidden)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// Dossier local choisi par l'utilisateur, canonicalisé.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalRoot {
@@ -54,6 +103,14 @@ impl LocalRoot {
             return Err(SshError::LocalIo);
         }
         Ok(Self { root })
+    }
+
+    /// Racine soumise à une politique (dossier choisi par l'utilisateur pour y naviguer ou y
+    /// télécharger) : voir [`RootPolicy`].
+    pub fn with_policy(path: &Path, policy: &RootPolicy) -> Result<Self, SshError> {
+        let root = Self::new(path)?;
+        policy.check(&root.root)?;
+        Ok(root)
     }
 
     /// Chemin canonique de la racine.
@@ -215,6 +272,49 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         std::os::unix::fs::symlink(outside.path(), dir.path().join("lien")).unwrap();
         assert_eq!(root.resolve("lien"), Err(SshError::LocalOutsideRoot));
+    }
+
+    #[test]
+    fn sensitive_folders_cannot_become_roots() {
+        let home = tempfile::tempdir().unwrap();
+        let ssh = home.path().join(".ssh");
+        let data = home.path().join("AppData/Younji");
+        let docs = home.path().join("Documents/projet");
+        for dir in [&ssh, &data, &docs] {
+            std::fs::create_dir_all(dir.join("sous")).unwrap();
+        }
+        let policy = RootPolicy::new(
+            &[home.path().to_path_buf(), data.clone()],
+            &[ssh.clone(), data.clone()],
+        );
+        let refused = [
+            home.path().to_path_buf(),
+            home.path().join("AppData"),
+            ssh.clone(),
+            ssh.join("sous"),
+            data.clone(),
+            data.join("sous"),
+        ];
+        for dir in refused {
+            assert_eq!(
+                LocalRoot::with_policy(&dir, &policy),
+                Err(SshError::LocalRootForbidden),
+                "{dir:?}"
+            );
+        }
+        // Racine du système de fichiers (ou du lecteur sous Windows).
+        let fs_root = std::fs::canonicalize(home.path())
+            .unwrap()
+            .ancestors()
+            .last()
+            .unwrap()
+            .to_path_buf();
+        assert_eq!(
+            LocalRoot::with_policy(&fs_root, &policy),
+            Err(SshError::LocalRootForbidden)
+        );
+        assert!(LocalRoot::with_policy(&docs, &policy).is_ok());
+        assert!(LocalRoot::with_policy(&home.path().join("Documents"), &policy).is_ok());
     }
 
     #[test]

@@ -11,6 +11,14 @@ const MAX_PATH = 4096;
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
 
 /**
+ * Caractères invisibles ou bidirectionnels, qui permettraient de déguiser le chemin affiché
+ * (même liste que `prompt::is_invisible` côté Rust).
+ */
+const INVISIBLE = /[\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/;
+/** Étiquettes Unicode (U+E0000 à U+E007F), invisibles. */
+const TAGS = /[\u{e0000}-\u{e007f}]/u;
+
+/**
  * Extrait le chemin d'une séquence OSC 7 (`file://hôte/chemin`, encodé en pourcentage).
  * Renvoie `null` si la forme est invalide. Le nom d'hôte est ignoré : il ne peut pas être
  * comparé de façon fiable à l'adresse de connexion.
@@ -26,15 +34,19 @@ export function parseOsc7(data: string): string | null {
   } catch {
     return null;
   }
-  if (path.length > MAX_PATH || CONTROL.test(path)) return null;
+  if (path.length > MAX_PATH || CONTROL.test(path) || INVISIBLE.test(path) || TAGS.test(path)) {
+    return null;
+  }
   return path;
 }
 
 /**
- * Intégration au prompt pour bash et zsh, envoyée au shell **seulement sur demande** de
- * l'utilisateur. Texte constant : aucune donnée de l'utilisateur ni du serveur n'y est
- * insérée. L'espace initiale l'écarte de l'historique (`HISTCONTROL=ignorespace`, réglage
- * par défaut des distributions courantes). Le chemin est encodé en pourcentage.
+ * Intégration au prompt pour bash et zsh, **insérée** dans le terminal seulement sur demande
+ * de l'utilisateur, sans retour à la ligne : il la relit et la valide lui-même par Entrée (un
+ * autre programme au premier plan, une invite `sudo` ou un équipement réseau ne l'exécute
+ * donc jamais d'office). Texte constant : aucune donnée de l'utilisateur ni du serveur n'y est
+ * insérée. L'espace initiale l'écarte de l'historique (`HISTCONTROL=ignorespace`, réglage par
+ * défaut des distributions courantes). Le chemin est encodé en pourcentage.
  */
 export const SHELL_INTEGRATION = [
   ' __younji_osc7() { local LC_ALL=C p="$PWD" o="" c i;',
@@ -42,5 +54,5 @@ export const SHELL_INTEGRATION = [
   ` case "$c" in [a-zA-Z0-9/._~-]) o+="$c" ;; *) printf -v c '%%%02X' "'$c"; o+="$c" ;; esac; done;`,
   ` printf '\\033]7;file://%s%s\\033\\\\' "\${HOSTNAME:-}" "$o"; };`,
   ' if [ -n "${ZSH_VERSION:-}" ]; then autoload -Uz add-zsh-hook && add-zsh-hook precmd __younji_osc7;',
-  ' else PROMPT_COMMAND="__younji_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi; __younji_osc7\r',
+  ' else PROMPT_COMMAND="__younji_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi; __younji_osc7',
 ].join('');

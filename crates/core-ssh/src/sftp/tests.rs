@@ -620,16 +620,18 @@ async fn edits_are_uploaded_on_save_and_conflicts_are_detected() {
     let fs = Arc::new(sample_tree());
     let remote = p("/home/test/Projet été/lisez moi.txt");
     let events = Arc::new(EditEvents::default());
+    let private = tempfile::tempdir().unwrap();
     let (session, local) = EditSession::start(
         fs.clone(),
         remote.clone(),
-        ".txt",
+        private.path(),
         Duration::from_millis(20),
         events.clone(),
     )
     .await
     .unwrap();
-    assert!(local.ends_with("lisez moi.txt.txt"));
+    assert!(local.ends_with("lisez moi.txt"));
+    assert!(local.starts_with(private.path()));
     assert_eq!(std::fs::read(&local).unwrap(), b"bonjour");
 
     std::fs::write(&local, b"bonjour modifie").unwrap();
@@ -673,11 +675,12 @@ async fn edit_refuses_unsafe_names_and_huge_files() {
     );
     fs.add_dir("/dossier");
     let events: Arc<dyn EditSink> = Arc::new(EditEvents::default());
+    let private = tempfile::tempdir().unwrap();
     let start = |path: &str| {
         EditSession::start(
             fs.clone(),
             p(path),
-            "",
+            private.path(),
             Duration::from_millis(20),
             events.clone(),
         )
@@ -685,4 +688,40 @@ async fn edit_refuses_unsafe_names_and_huge_files() {
     assert_eq!(start("/CON").await.err(), Some(SshError::SftpUnsafeName));
     assert_eq!(start("/gros").await.err(), Some(SshError::EditTooLarge));
     assert_eq!(start("/dossier").await.err(), Some(SshError::SftpNotFile));
+}
+
+#[test]
+fn stale_edit_copies_are_cleaned_up() {
+    let private = tempfile::tempdir().unwrap();
+    std::fs::create_dir(private.path().join("younji-edit-abc")).unwrap();
+    std::fs::write(private.path().join("younji-edit-abc/secret.conf"), b"x").unwrap();
+    std::fs::create_dir(private.path().join("autre")).unwrap();
+    std::fs::write(private.path().join("younji-edit-fichier"), b"x").unwrap();
+    assert_eq!(super::edit::cleanup_stale(private.path()), 1);
+    assert!(!private.path().join("younji-edit-abc").exists());
+    assert!(private.path().join("autre").exists());
+    assert!(private.path().join("younji-edit-fichier").exists());
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn downloaded_files_carry_the_mark_of_the_web() {
+    let fs = sample_tree();
+    let local = tempfile::tempdir().unwrap();
+    let reporter = TestReporter::new(ConflictAction::Skip, false);
+    let summary = download(
+        &fs,
+        Download {
+            sources: vec![p("/home/test/Projet été/lisez moi.txt")],
+            dest: dest(local.path()),
+            policy: ConflictPolicy::Ask,
+        },
+        &reporter,
+        &CancellationToken::new(),
+    )
+    .await;
+    assert_eq!(summary.transferred, 1);
+    let stream = local.path().join("lisez moi.txt:Zone.Identifier");
+    let mark = std::fs::read_to_string(stream).unwrap();
+    assert!(mark.contains("ZoneId=3"), "{mark:?}");
 }

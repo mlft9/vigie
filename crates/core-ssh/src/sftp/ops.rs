@@ -1,6 +1,10 @@
 //! Opérations distantes de haut niveau (SFTP-03) : listage affichable, suppression récursive,
 //! création, renommage, droits.
 
+use std::time::Duration;
+
+use tokio::time::{Instant, timeout};
+
 use super::names::{RemotePath, display_name};
 use super::{EntryKind, RemoteFs, RemoteMeta, lstat_opt};
 use crate::SshError;
@@ -10,6 +14,9 @@ pub const MAX_LIST_ENTRIES: usize = 10_000;
 /// Nombre maximal de liens symboliques dont la cible est résolue dans un listage (une requête
 /// par lien).
 const MAX_RESOLVED_LINKS: usize = 256;
+/// Temps total consacré à résoudre les cibles des liens d'un listage : au-delà, les liens
+/// restants sont affichés sans type de cible (un serveur lent ne bloque pas le listage).
+const LINK_RESOLUTION_BUDGET: Duration = Duration::from_secs(10);
 /// Profondeur maximale d'un parcours récursif.
 pub const MAX_DEPTH: usize = 64;
 /// Nombre maximal d'éléments d'une opération récursive (transfert, suppression).
@@ -54,6 +61,7 @@ pub async fn list<F: RemoteFs>(fs: &F, path: &RemotePath) -> Result<RemoteListin
     let (raw, truncated) = fs.read_dir(path, MAX_LIST_ENTRIES).await?;
     let mut entries = Vec::with_capacity(raw.len());
     let mut resolved = 0;
+    let deadline = Instant::now() + LINK_RESOLUTION_BUDGET;
     for entry in raw {
         let Ok(full) = path.join(&entry.name) else {
             continue;
@@ -61,7 +69,16 @@ pub async fn list<F: RemoteFs>(fs: &F, path: &RemotePath) -> Result<RemoteListin
         let link_target = if entry.meta.kind == EntryKind::Symlink && resolved < MAX_RESOLVED_LINKS
         {
             resolved += 1;
-            fs.stat(&full).await.ok().map(|m| m.kind)
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                None
+            } else {
+                timeout(left, fs.stat(&full))
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .map(|m| m.kind)
+            }
         } else {
             None
         };

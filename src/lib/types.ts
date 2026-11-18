@@ -254,7 +254,6 @@ export interface LocalRootRef {
   name: string;
 }
 
-export type ConflictPolicy = 'ask' | 'overwrite' | 'skip' | 'rename';
 export type ConflictAction = 'overwrite' | 'skip' | 'rename';
 
 export type DownloadTarget = { kind: 'pick' } | { kind: 'root'; rootId: LocalRootId; path: string };

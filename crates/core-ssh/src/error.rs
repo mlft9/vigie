@@ -150,6 +150,10 @@ pub enum SshError {
     /// Chemin local invalide ou hors du dossier choisi.
     #[error("chemin local hors du dossier choisi")]
     LocalOutsideRoot,
+    /// Dossier refusé comme dossier local (racine d'un disque, dossier personnel entier,
+    /// `~/.ssh`, données de Younji).
+    #[error("dossier local refusé")]
+    LocalRootForbidden,
     /// Transfert annulé par l'utilisateur.
     #[error("transfert annulé")]
     TransferCancelled,
@@ -223,6 +227,7 @@ impl SshError {
             Self::SftpTooManyEntries => "ssh.sftp_too_many_entries",
             Self::LocalIo => "ssh.local_io",
             Self::LocalOutsideRoot => "ssh.local_outside_root",
+            Self::LocalRootForbidden => "ssh.local_root_forbidden",
             Self::TransferCancelled => "ssh.transfer_cancelled",
             Self::TransferNotFound => "ssh.transfer_not_found",
             Self::EditTooLarge => "ssh.edit_too_large",
@@ -280,6 +285,7 @@ impl SshError {
         Self::SftpTooManyEntries,
         Self::LocalIo,
         Self::LocalOutsideRoot,
+        Self::LocalRootForbidden,
         Self::TransferCancelled,
         Self::TransferNotFound,
         Self::EditTooLarge,

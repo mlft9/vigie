@@ -77,6 +77,13 @@ pub fn run() {
             app.manage(SessionManager::new(known_hosts));
             app.manage(vault);
             app.manage(SettingsStore::new(data_dir.join(SETTINGS_FILE)));
+            // Copies d'édition SFTP laissées par une exécution interrompue : supprimées.
+            if let Ok(dir) = commands::sftp::edit_dir(app.handle()) {
+                let removed = core_ssh::sftp::edit::cleanup_stale(&dir);
+                if removed > 0 {
+                    tracing::info!(removed, "copies d'édition restantes supprimées");
+                }
+            }
             spawn_auto_lock(app.handle().clone());
 
             // Le serveur Vite n'est autorisé qu'en développement.

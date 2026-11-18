@@ -39,16 +39,19 @@ describe('OSC 7', () => {
       'file://h/a%0Ab',
       'file://h/a%1B[31m',
       'file://h/a\u0085b',
+      'file://h/facture\u202Efdp',
+      'file://h/z%E2%80%8Bw',
+      'file://h/tag\u{E0041}',
       `file://h/${'a'.repeat(5000)}`,
     ]) {
       expect(parseOsc7(bad)).toBeNull();
     }
   });
 
-  it('envoie une intégration au prompt constante, hors historique, sur une seule ligne', () => {
+  it('fournit une intégration au prompt constante, hors historique, jamais validée d’office', () => {
     expect(SHELL_INTEGRATION.startsWith(' ')).toBe(true);
-    expect(SHELL_INTEGRATION.endsWith('\r')).toBe(true);
-    expect(SHELL_INTEGRATION.slice(0, -1)).not.toMatch(/[\r\n]/);
+    // Aucun retour à la ligne : l'utilisateur relit et valide lui-même par Entrée.
+    expect(SHELL_INTEGRATION).not.toMatch(/[\r\n]/);
     // Pas de « ! » (expansion de l'historique de bash).
     expect(SHELL_INTEGRATION).not.toContain('!');
     expect(SHELL_INTEGRATION).toContain("printf '\\033]7;file://%s%s\\033\\\\'");

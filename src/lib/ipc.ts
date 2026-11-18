@@ -7,7 +7,6 @@ import type {
   AppInfo,
   AppSettings,
   ConflictAction,
-  ConflictPolicy,
   ConnectRequest,
   DownloadTarget,
   EditId,
@@ -338,14 +337,16 @@ export function sftpChmod(sftpId: SftpId, path: string, mode: number): Promise<v
   return call<undefined>('sftp_chmod', { sftpId, path, mode });
 }
 
-/** Ajoute un téléchargement à la file ; `null` si la boîte de dialogue a été annulée. */
+/**
+ * Ajoute un téléchargement à la file ; `null` si la boîte de dialogue a été annulée. Les
+ * conflits sont toujours posés à l'utilisateur (aucun écrasement décidé d'avance).
+ */
 export function sftpDownload(
   sftpId: SftpId,
   paths: string[],
   target: DownloadTarget,
-  policy: ConflictPolicy = 'ask',
 ): Promise<JobId | null> {
-  return call<JobId | null>('sftp_download', { sftpId, paths, target, policy });
+  return call<JobId | null>('sftp_download', { sftpId, paths, target });
 }
 
 /** Ajoute un envoi à la file ; `null` si la boîte de dialogue a été annulée. */
@@ -353,9 +354,8 @@ export function sftpUpload(
   sftpId: SftpId,
   source: UploadSource,
   remoteDir: string,
-  policy: ConflictPolicy = 'ask',
 ): Promise<JobId | null> {
-  return call<JobId | null>('sftp_upload', { sftpId, source, remoteDir, policy });
+  return call<JobId | null>('sftp_upload', { sftpId, source, remoteDir });
 }
 
 export function sftpTransferCancel(sftpId: SftpId, job: JobId): Promise<void> {

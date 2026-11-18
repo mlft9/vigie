@@ -247,7 +247,8 @@
       "transfer_cancelled": "Transfer cancelled.",
       "transfer_not_found": "This transfer has finished.",
       "edit_too_large": "File too large to edit (16 MiB at most).",
-      "edit_conflict": "The file was modified on the server since it was opened: save not uploaded."
+      "edit_conflict": "The file was modified on the server since it was opened: save not uploaded.",
+      "local_root_forbidden": "This folder cannot be chosen: pick a specific subfolder (not a drive root, nor your whole home folder, nor ~/.ssh or Younji’s data)."
     },
     "connect": {
       "missing_fields": "Enter the host and the user.",
@@ -481,7 +482,7 @@
     "tabTitle": "SFTP · {{title}}",
     "follow": "Follow the terminal",
     "enableFollow": "Enable following",
-    "integrationHint": "Sends the shell (bash or zsh) a command that reports the current directory at each prompt (OSC 7). No data is added to it.",
+    "integrationHint": "Inserts into the terminal a command (bash or zsh) that reports the current directory at each prompt (OSC 7). Review it, then press Enter. No data is added to it.",
     "notConnected": "The panel opens once the session is connected.",
     "opening": "Opening SFTP…",
     "parentClosed": "The terminal session used by this tab is closed. Reconnect it, then reopen the browser.",

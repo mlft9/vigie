@@ -1,53 +1,81 @@
 //! Ouverture d'une copie de fichier distant dans un **éditeur de texte** (SFTP-05, ADR-034).
 //!
-//! Jamais l'application associée au type de fichier : un fichier distant nommé `x.bat`,
-//! `x.js`, `x.hta` ou `x.desktop` serait exécuté au lieu d'être ouvert. Le chemin est passé en
-//! argument de processus, sans shell.
+//! Jamais l'application associée au type de fichier, ni une détection du type par le contenu :
+//! un fichier distant nommé `x.bat`, `x.js`, `x.hta` ou `x.desktop`, ou un `README` contenant
+//! du HTML, serait exécuté ou ouvert dans une autre application au lieu d'être édité. L'éditeur
+//! est désigné explicitement, par un chemin absolu ; le fichier est passé en argument de
+//! processus, sans shell.
 //! - Windows : Bloc-notes, depuis le dossier système.
-//! - Linux : `xdg-open` sur une copie suffixée `.txt` (type `text/plain`), voir
-//!   [`EDIT_SUFFIX`].
+//! - Linux : premier éditeur de texte graphique trouvé dans une liste fixe ([`LINUX_EDITORS`]),
+//!   dans les dossiers système ; aucun trouvé : `editor.open_failed`.
 //! - macOS : TextEdit (`open -e`).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::AppError;
 
-/// Suffixe ajouté au nom de la copie locale : sous Linux, il impose le type `text/plain` à
-/// `xdg-open`. Inutile ailleurs, l'éditeur étant désigné explicitement.
-pub const EDIT_SUFFIX: &str = if cfg!(target_os = "linux") {
-    ".txt"
-} else {
-    ""
-};
+/// Éditeurs de texte graphiques essayés sous Linux, dans l'ordre.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const LINUX_EDITORS: [&str; 10] = [
+    "gnome-text-editor",
+    "gedit",
+    "kate",
+    "kwrite",
+    "mousepad",
+    "xed",
+    "pluma",
+    "featherpad",
+    "geany",
+    "leafpad",
+];
+
+/// Dossiers où les éditeurs sont cherchés (jamais le `PATH`, modifiable par l'environnement).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const LINUX_BIN_DIRS: [&str; 3] = ["/usr/bin", "/usr/local/bin", "/bin"];
+
+/// Premier éditeur Linux présent, en chemin absolu.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn find_linux_editor(exists: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    LINUX_EDITORS.iter().find_map(|name| {
+        LINUX_BIN_DIRS
+            .iter()
+            .map(|dir| Path::new(dir).join(name))
+            .find(|candidate| exists(candidate))
+    })
+}
 
 #[cfg(windows)]
-fn editor_command(file: &Path) -> Command {
-    use std::path::PathBuf;
+fn editor_command(file: &Path) -> Option<Command> {
     let system_root =
         std::env::var_os("SystemRoot").map_or_else(|| PathBuf::from(r"C:\Windows"), PathBuf::from);
     let mut command = Command::new(system_root.join("System32").join("notepad.exe"));
     command.arg(file);
-    command
+    Some(command)
 }
 
 #[cfg(target_os = "macos")]
-fn editor_command(file: &Path) -> Command {
+fn editor_command(file: &Path) -> Option<Command> {
     let mut command = Command::new("/usr/bin/open");
     command.arg("-e").arg(file);
-    command
+    Some(command)
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn editor_command(file: &Path) -> Command {
-    let mut command = Command::new("xdg-open");
+fn editor_command(file: &Path) -> Option<Command> {
+    let editor = find_linux_editor(|p| p.is_file())?;
+    let mut command = Command::new(editor);
     command.arg(file);
-    command
+    Some(command)
 }
 
 /// Lance l'éditeur sur `file`, sans attendre sa fermeture.
 pub fn open_in_editor(file: &Path) -> Result<(), AppError> {
-    let mut child = editor_command(file).spawn().map_err(|error| {
+    let Some(mut command) = editor_command(file) else {
+        tracing::debug!("aucun éditeur de texte connu trouvé");
+        return Err(AppError::EDITOR_FAILED);
+    };
+    let mut child = command.spawn().map_err(|error| {
         tracing::debug!(%error, "lancement de l'éditeur impossible");
         AppError::EDITOR_FAILED
     })?;
@@ -60,33 +88,30 @@ pub fn open_in_editor(file: &Path) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     #[test]
-    fn the_editor_is_never_the_associated_application() {
-        let command = editor_command(Path::new("facture.bat"));
-        let program = PathBuf::from(command.get_program());
-        let args: Vec<_> = command.get_args().collect();
+    fn linux_editors_are_absolute_and_never_a_launcher_or_shell() {
+        let found = find_linux_editor(|p| p == Path::new("/usr/bin/kate"));
+        assert_eq!(found, Some(PathBuf::from("/usr/bin/kate")));
         assert_eq!(
-            args.last().copied(),
-            Some(std::ffi::OsStr::new("facture.bat"))
+            find_linux_editor(|p| p.ends_with("gedit") || p.ends_with("kate")),
+            Some(PathBuf::from("/usr/bin/gedit"))
         );
-        if cfg!(windows) {
-            assert!(program.ends_with("notepad.exe"), "{program:?}");
+        assert_eq!(find_linux_editor(|_| false), None);
+        for name in LINUX_EDITORS {
+            for forbidden in ["xdg-open", "gio", "sh", "bash", "sensible-editor", "open"] {
+                assert_ne!(name, forbidden);
+            }
         }
-        if cfg!(target_os = "linux") {
-            assert_eq!(EDIT_SUFFIX, ".txt");
-        }
-        // Jamais un interpréteur de commandes.
-        let name = program
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_lowercase();
-        for shell in ["cmd.exe", "powershell.exe", "sh", "bash"] {
-            assert_ne!(name, shell);
-        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_uses_notepad_with_the_file_as_argument() {
+        let command = editor_command(Path::new("facture.bat")).unwrap();
+        assert!(PathBuf::from(command.get_program()).ends_with("notepad.exe"));
+        let args: Vec<_> = command.get_args().collect();
+        assert_eq!(args, [std::ffi::OsStr::new("facture.bat")]);
     }
 }

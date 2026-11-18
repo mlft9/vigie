@@ -247,7 +247,8 @@
       "transfer_cancelled": "Transfert annulé.",
       "transfer_not_found": "Ce transfert est terminé.",
       "edit_too_large": "Fichier trop volumineux pour l'édition (16 Mio au plus).",
-      "edit_conflict": "Le fichier a été modifié sur le serveur depuis son ouverture : enregistrement non envoyé."
+      "edit_conflict": "Le fichier a été modifié sur le serveur depuis son ouverture : enregistrement non envoyé.",
+      "local_root_forbidden": "Ce dossier ne peut pas être choisi : prenez un sous-dossier précis (pas la racine d’un disque, ni le dossier personnel entier, ni ~/.ssh ou les données de Younji)."
     },
     "connect": {
       "missing_fields": "Renseignez l'hôte et l'utilisateur.",
@@ -481,7 +482,7 @@
     "tabTitle": "SFTP · {{title}}",
     "follow": "Suivre le terminal",
     "enableFollow": "Activer le suivi",
-    "integrationHint": "Envoie au shell (bash ou zsh) une commande qui annonce le dossier courant à chaque invite (OSC 7). Aucune donnée n'y est ajoutée.",
+    "integrationHint": "Insère dans le terminal une commande (bash ou zsh) qui annonce le dossier courant à chaque invite (OSC 7). Relisez-la puis validez par Entrée. Aucune donnée n'y est ajoutée.",
     "notConnected": "Le panneau s'ouvre une fois la session connectée.",
     "opening": "Ouverture du SFTP…",
     "parentClosed": "La session du terminal associée à cet onglet est fermée. Reconnectez-la, puis rouvrez l'explorateur.",

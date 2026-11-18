@@ -1,13 +1,16 @@
 //! Édition d'un fichier distant avec un éditeur local (SFTP-05).
 //!
 //! Le fichier est copié dans un dossier temporaire **privé** (nom aléatoire, 0700 sous Unix,
-//! fichier 0600), surveillé, et renvoyé automatiquement à chaque enregistrement. Avant chaque
+//! fichier 0600), créé dans un dossier propre à l'application (jamais dans le `/tmp` partagé),
+//! surveillé, et renvoyé automatiquement à chaque enregistrement. Avant chaque
 //! renvoi, la taille et la date du fichier distant sont comparées à celles connues : si
 //! quelqu'un l'a modifié entre-temps, rien n'est écrasé ; un conflit est signalé et seul un
 //! renvoi forcé ([`EditSession::force_upload`]) écrase. Le dossier temporaire est supprimé
 //! quand la session d'édition se termine (fermeture, fin de la session SSH, verrouillage).
 //!
-//! L'ouverture de l'éditeur (processus local) est faite par l'appelant.
+//! L'ouverture de l'éditeur (processus local) est faite par l'appelant. Après un arrêt brutal
+//! de l'application, les copies restantes sont supprimées au démarrage suivant
+//! ([`cleanup_stale`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -25,6 +28,30 @@ use crate::SshError;
 pub const MAX_EDIT_SIZE: u64 = 16 * 1024 * 1024;
 /// Intervalle de surveillance du fichier local.
 pub const DEFAULT_POLL: Duration = Duration::from_secs(1);
+/// Préfixe des dossiers temporaires d'édition.
+const DIR_PREFIX: &str = "younji-edit-";
+
+/// Supprime les copies d'édition laissées par une exécution précédente (arrêt brutal, fichier
+/// verrouillé par l'éditeur). `parent` est le dossier propre à l'application passé à
+/// [`EditSession::start`] ; seuls ses sous-dossiers `younji-edit-*` (pas les liens) sont
+/// supprimés. Renvoie le nombre de dossiers supprimés.
+pub fn cleanup_stale(parent: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(parent) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+        let ours = entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.starts_with(DIR_PREFIX));
+        if is_dir && ours && std::fs::remove_dir_all(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
 
 /// Événement d'une session d'édition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,20 +104,18 @@ fn local_stamp(path: &Path) -> Option<LocalStamp> {
 }
 
 impl EditSession {
-    /// Copie le fichier distant dans un dossier temporaire privé et démarre la surveillance.
-    /// `suffix` est ajouté au nom local (`.txt` pour imposer un éditeur de texte). Renvoie la
-    /// session et le chemin du fichier local, à ouvrir dans l'éditeur.
+    /// Copie le fichier distant dans un dossier temporaire privé, créé dans `parent` (dossier
+    /// propre à l'application, accessible au seul utilisateur), et démarre la surveillance.
+    /// Renvoie la session et le chemin du fichier local, à ouvrir dans l'éditeur.
     pub async fn start<F: RemoteFs>(
         fs: Arc<F>,
         remote: RemotePath,
-        suffix: &str,
+        parent: &Path,
         poll: Duration,
         sink: Arc<dyn EditSink>,
     ) -> Result<(Self, PathBuf), SshError> {
-        let name = remote.file_name().ok_or(SshError::SftpInvalidPath)?;
-        check_local_name(name)?;
-        let local_name = format!("{name}{suffix}");
-        check_local_name(&local_name)?;
+        let local_name = remote.file_name().ok_or(SshError::SftpInvalidPath)?;
+        check_local_name(local_name)?;
 
         let meta = fs.stat(&remote).await?;
         if meta.kind != EntryKind::File {
@@ -103,10 +128,10 @@ impl EditSession {
         let baseline = Stamp::from(fs.stat(&remote).await?);
 
         let dir = tempfile::Builder::new()
-            .prefix("younji-edit-")
-            .tempdir()
+            .prefix(DIR_PREFIX)
+            .tempdir_in(parent)
             .map_err(|_| SshError::LocalIo)?;
-        let local = dir.path().join(&local_name);
+        let local = dir.path().join(local_name);
         let path = local.clone();
         tokio::task::spawn_blocking(move || write_private(&path, &content))
             .await

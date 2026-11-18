@@ -512,7 +512,7 @@ export function RemoteBrowser({
         <NameDialog
           title={t('common.rename')}
           label={t('sftp.name')}
-          initial={dialog.entry.name}
+          initial={dialog.entry.displayName}
           maxLength={MAX_FILE_NAME}
           onSave={async (name) => {
             await sftpRename(
