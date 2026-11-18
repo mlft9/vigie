@@ -1,4 +1,5 @@
-//! État partagé de l'application : sessions SSH ouvertes et fichiers de clé sélectionnés.
+//! État partagé de l'application : sessions SSH ouvertes, fichiers de clé sélectionnés et
+//! registre SFTP (clients, dossiers locaux, éditions), qui vit et meurt avec les sessions.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -8,6 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use core_ssh::{KnownHosts, SessionHandle};
 
 use crate::error::AppError;
+use crate::sftp_state::SftpRegistry;
 
 /// Nombre maximal de sessions SSH simultanées (protège contre une interface emballée).
 pub const MAX_SESSIONS: usize = 64;
@@ -31,6 +33,7 @@ pub struct SessionManager {
     key_files: Mutex<Vec<(KeyFileId, PathBuf)>>,
     next_id: AtomicU64,
     known_hosts: Arc<KnownHosts>,
+    sftp: Arc<SftpRegistry>,
 }
 
 impl SessionManager {
@@ -41,7 +44,13 @@ impl SessionManager {
             key_files: Mutex::default(),
             next_id: AtomicU64::new(1),
             known_hosts,
+            sftp: Arc::default(),
         }
+    }
+
+    /// Registre SFTP (clients ouverts sur les sessions, dossiers locaux, éditions).
+    pub fn sftp(&self) -> &SftpRegistry {
+        &self.sftp
     }
 
     /// Fichier des clés d'hôte connues.
@@ -73,6 +82,7 @@ impl SessionManager {
         let id = self.next_id();
         let remover = SessionRemover {
             sessions: self.sessions.clone(),
+            sftp: self.sftp.clone(),
             id,
         };
         sessions.insert(id, Arc::new(start(id, remover)));
@@ -94,11 +104,14 @@ impl SessionManager {
             .remove(&id)
             .ok_or(AppError::SESSION_NOT_FOUND)?;
         handle.close();
+        self.sftp.close_session(id);
         Ok(())
     }
 
-    /// Ferme toutes les sessions (rechargement de l'interface : plus personne ne les pilote).
+    /// Ferme toutes les sessions (rechargement de l'interface : plus personne ne les pilote),
+    /// avec leurs clients SFTP, transferts et éditions, et oublie les dossiers locaux.
     pub fn close_all_sessions(&self) {
+        self.sftp.close_all();
         let handles: Vec<_> = match self.sessions.lock() {
             Ok(mut sessions) => sessions.drain().map(|(_, handle)| handle).collect(),
             Err(_) => return,
@@ -134,15 +147,17 @@ impl SessionManager {
 /// Retire une session du gestionnaire quand elle se termine d'elle-même.
 pub struct SessionRemover {
     sessions: Sessions,
+    sftp: Arc<SftpRegistry>,
     id: SessionId,
 }
 
 impl SessionRemover {
-    /// Retire la session (sans effet si elle a déjà été fermée).
+    /// Retire la session (sans effet si elle a déjà été fermée) et ferme ses clients SFTP.
     pub fn remove(&self) {
         if let Ok(mut sessions) = self.sessions.lock() {
             sessions.remove(&self.id);
         }
+        self.sftp.close_session(self.id);
     }
 }
 

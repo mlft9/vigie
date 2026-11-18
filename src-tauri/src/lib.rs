@@ -2,10 +2,12 @@
 //! (ADR-004). Aucune logique métier ici.
 
 mod commands;
+mod editor;
 mod error;
 mod logging;
 mod navigation;
 mod settings;
+mod sftp_state;
 mod state;
 mod vault_state;
 
@@ -110,6 +112,10 @@ pub fn run() {
                     tracing::warn!(scheme = url.scheme(), "ouverture de fenêtre refusée");
                     NewWindowResponse::Deny
                 })
+                // Gestionnaire natif de glisser-déposer désactivé : il empêche le glisser-déposer
+                // HTML5 entre les panneaux SFTP sous Windows, et il exposerait à l'interface les
+                // chemins des fichiers déposés depuis le système (ADR-034).
+                .disable_drag_drop_handler()
                 .inner_size(1200.0, 780.0)
                 .min_inner_size(800.0, 500.0)
                 .center()
@@ -153,6 +159,23 @@ pub fn run() {
             commands::book::known_host_delete,
             commands::settings::settings_get,
             commands::settings::settings_set,
+            commands::sftp::sftp_open,
+            commands::sftp::sftp_close,
+            commands::sftp::sftp_home,
+            commands::sftp::sftp_list,
+            commands::sftp::sftp_mkdir,
+            commands::sftp::sftp_rename,
+            commands::sftp::sftp_remove,
+            commands::sftp::sftp_chmod,
+            commands::sftp::sftp_download,
+            commands::sftp::sftp_upload,
+            commands::sftp::sftp_transfer_cancel,
+            commands::sftp::sftp_conflict_decision,
+            commands::sftp::sftp_edit,
+            commands::sftp::sftp_edit_close,
+            commands::sftp::sftp_edit_force,
+            commands::sftp::local_pick_root,
+            commands::sftp::local_list,
         ])
         .run(tauri::generate_context!());
 

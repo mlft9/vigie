@@ -5,6 +5,7 @@
 pub mod app;
 pub mod book;
 pub mod settings;
+pub mod sftp;
 pub mod ssh;
 pub mod url;
 pub mod vault;
