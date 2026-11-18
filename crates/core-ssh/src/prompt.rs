@@ -89,7 +89,7 @@ fn is_password_text(text: &str) -> bool {
 
 /// Caractères invisibles ou de mise en forme (catégories Unicode Cf, Zl, Zp, liste explicite)
 /// qui peuvent masquer, inverser ou mettre en page du texte pour imiter l'interface.
-fn is_invisible(c: char) -> bool {
+pub(crate) fn is_invisible(c: char) -> bool {
     matches!(
         c,
         '\u{00AD}'
