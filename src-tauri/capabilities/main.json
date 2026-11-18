@@ -2,9 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
   "description": "Fenêtre principale : uniquement les commandes applicatives nécessaires, aucune permission de plugin.",
-  "windows": [
-    "main"
-  ],
+  "windows": ["main"],
   "permissions": [
     "allow-app-info",
     "allow-ssh-connect",
