@@ -9,7 +9,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 |---|---|---|
 | 0 | Fondations | ✅ |
 | 1 | Terminal SSH multi-onglets | ✅ |
-| 2 | Coffre chiffré et carnet d'hôtes | 🟨 |
+| 2 | Coffre chiffré et carnet d'hôtes | ✅ |
 | 3 | 2FA et générateur de clés | ⬜ |
 | 4 | SFTP | ⬜ |
 | 5 | Split, snippets, diffusion multi-sessions | ⬜ |
@@ -100,12 +100,12 @@ Contenu :
 - Verrouillage manuel et automatique. VLT-03. Décision à consigner : que deviennent les sessions ouvertes au verrouillage ?
 
 **Critères d'acceptation**
-- [ ] Au premier lancement, création du coffre. Aux lancements suivants, il est verrouillé.
-- [ ] Un mauvais mot de passe est refusé, sans indice sur la cause.
-- [ ] Le fichier du coffre ouvert dans un éditeur ne montre aucune donnée lisible (ni nom d'hôte, ni utilisateur).
-- [ ] Le verrouillage automatique fonctionne avec le délai configuré.
-- [ ] Le changement de mot de passe maître fonctionne, et l'ancien mot de passe ne marche plus.
-- [ ] Une connexion depuis le carnet utilise l'identité enregistrée sans rien redemander.
+- [x] Au premier lancement, création du coffre. Aux lancements suivants, il est verrouillé.
+- [x] Un mauvais mot de passe est refusé, sans indice sur la cause.
+- [x] Le fichier du coffre ouvert dans un éditeur ne montre aucune donnée lisible (ni nom d'hôte, ni utilisateur).
+- [x] Le verrouillage automatique fonctionne avec le délai configuré.
+- [x] Le changement de mot de passe maître fonctionne, et l'ancien mot de passe ne marche plus.
+- [x] Une connexion depuis le carnet utilise l'identité enregistrée sans rien redemander.
 
 ---
 
