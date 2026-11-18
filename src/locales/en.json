@@ -14,7 +14,12 @@
   },
   "tabs": {
     "label": "Tabs",
-    "home": "Home"
+    "home": "Home",
+    "newSession": "New session",
+    "new": "New session (Ctrl+Shift+T)",
+    "close": "Close tab {{title}}",
+    "renameLabel": "Tab name",
+    "renameHint": "Double-click or F2 to rename, drag to move"
   },
   "sections": {
     "comingSoon": "This section will arrive in step {{step}} of the roadmap.",
@@ -47,10 +52,153 @@
       "unavailable": "unavailable"
     }
   },
+  "common": {
+    "cancel": "Cancel"
+  },
+  "connect": {
+    "title": "Quick connect",
+    "reconnectTitle": "Reconnect",
+    "host": "Host",
+    "hostPlaceholder": "server.example.com or 192.168.1.10",
+    "port": "Port",
+    "username": "User",
+    "authMethod": "Authentication",
+    "auth": {
+      "password": "Password",
+      "key": "Private key"
+    },
+    "password": "Password",
+    "keyFile": "Key file",
+    "chooseKey": "Choose a key…",
+    "noKey": "No key selected",
+    "passphrase": "Passphrase",
+    "passphraseHint": "Leave empty if the key is not protected.",
+    "submit": "Connect"
+  },
+  "session": {
+    "connecting": "Connecting to {{host}}…",
+    "authenticating": "Authenticating…",
+    "reconnect": "Reconnect",
+    "closeTab": "Close tab"
+  },
+  "hostKey": {
+    "presented": "Key presented by the server",
+    "unknown": {
+      "title": "Unknown host",
+      "intro": "This is the first connection to {{host}}. Younji cannot yet guarantee that this server is the one you expect.",
+      "verify": "Compare this fingerprint with the server's before accepting: on the server, run ssh-keygen -lf /etc/ssh/ssh_host_<type>_key.pub, where <type> matches the algorithm shown (ed25519, ecdsa or rsa). Once accepted, the key is remembered.",
+      "reject": "Reject",
+      "accept": "Accept and connect"
+    },
+    "changed": {
+      "title": "Host key changed: connection blocked",
+      "warning": "The key presented by {{host}} does not match the recorded one.",
+      "explanation": "Someone may be trying to intercept the connection (man-in-the-middle attack). It may also be a reinstalled server or regenerated keys. No credentials were sent.",
+      "known": "Recorded key",
+      "unblockTitle": "If the change is legitimate",
+      "unblock": "Check the new fingerprint with the server's administrator, then delete the line starting with {{host}} in the file below. Host key management will come to the interface in step 2.",
+      "close": "Close tab"
+    },
+    "unreadable": "(unreadable recorded key)"
+  },
+  "terminal": {
+    "menu": "Terminal actions",
+    "copy": "Copy",
+    "paste": "Paste",
+    "search": "Search"
+  },
+  "search": {
+    "label": "Search the terminal",
+    "placeholder": "Search…",
+    "previous": "Previous match",
+    "next": "Next match",
+    "close": "Close search",
+    "notFound": "No match"
+  },
+  "paste": {
+    "title": "Confirm paste",
+    "lines_one": "The text to paste fits on {{count}} line.",
+    "lines_other": "The text to paste has {{count}} lines: each line break will run a command.",
+    "controlCharacters": "Warning: it contains invisible control characters (shown below as symbols).",
+    "preview": "Preview of the text to paste",
+    "truncated": "Preview truncated: the full text will be pasted.",
+    "confirm": "Paste"
+  },
+  "link": {
+    "title": "Open this link?",
+    "description": "The text shown in the terminal may differ from the real address. Check it before opening it in your browser:",
+    "open": "Open in browser"
+  },
+  "shortcuts": {
+    "keys": {
+      "ctrl": "Ctrl",
+      "shift": "Shift"
+    },
+    "title": "Keyboard shortcuts",
+    "description": "They use Ctrl+Shift so that the shell keeps its own shortcuts (Ctrl+C, Ctrl+R, Ctrl+W…).",
+    "pasteAlternative": "Shift+Insert also pastes into the terminal. Links open with Ctrl+click.",
+    "actions": {
+      "newTab": "New session",
+      "closeTab": "Close tab",
+      "nextTab": "Next tab",
+      "previousTab": "Previous tab",
+      "moveTabLeft": "Move tab left",
+      "moveTabRight": "Move tab right",
+      "search": "Search the terminal",
+      "copy": "Copy selection",
+      "paste": "Paste"
+    }
+  },
   "errors": {
     "unknown": "An unexpected error occurred.",
+    "internal": "Internal application error. See the log for details.",
     "ipc": {
-      "command_denied": "Action refused by the application."
+      "command_denied": "Action denied by the application."
+    },
+    "dialog": {
+      "failed": "The file picker could not be opened."
+    },
+    "url": {
+      "invalid": "This link is not allowed: only http and https links can be opened.",
+      "open_failed": "The browser could not be launched."
+    },
+    "ssh": {
+      "invalid_host": "Invalid host address. Enter a host name or an IP address.",
+      "invalid_port": "The port must be between 1 and 65535.",
+      "invalid_username": "Invalid user name.",
+      "invalid_secret": "The password or passphrase is empty or too long.",
+      "invalid_terminal_size": "Invalid terminal size.",
+      "invalid_input": "Invalid input.",
+      "input_too_large": "Text too large to be sent at once.",
+      "key_read_failed": "Unable to read the key file. Check that it exists and is accessible.",
+      "key_too_large": "This file is too large to be a private key.",
+      "key_passphrase_required": "This key is protected: enter its passphrase.",
+      "key_wrong_passphrase": "Wrong passphrase for this key.",
+      "key_invalid": "This file is not a recognized private key (OpenSSH, PEM or PuTTY).",
+      "key_file_unknown": "Unknown key file: select it again.",
+      "dns_failed": "Host not found. Check the address or your DNS resolution.",
+      "connection_refused": "Connection refused: no SSH server is listening on this port.",
+      "timeout": "The server is not responding (timed out).",
+      "connect_failed": "Unable to connect. Check the network and the address.",
+      "handshake_failed": "SSH negotiation failed (no secure algorithm in common or connection interrupted).",
+      "host_key_rejected": "Host key rejected: connection cancelled.",
+      "host_key_changed": "Connection blocked: the host key has changed.",
+      "host_key_revoked": "Connection blocked: this host's key is revoked.",
+      "host_key_timeout": "No decision on the host key: connection cancelled.",
+      "known_hosts_io": "The known host keys file cannot be read or written.",
+      "no_pending_decision": "No host key is awaiting a decision.",
+      "auth_failed": "Authentication denied. Check the user name and the password or key.",
+      "channel_failed": "The server refused to open a terminal.",
+      "connection_lost": "Connection lost.",
+      "session_ended": "Session ended.",
+      "session_closed": "Session closed.",
+      "session_not_found": "This session no longer exists.",
+      "too_many_sessions": "Too many open sessions. Close some before opening a new one."
+    },
+    "connect": {
+      "missing_fields": "Enter the host and the user.",
+      "missing_password": "Enter the password.",
+      "missing_key": "Choose a private key file."
     }
   }
 }

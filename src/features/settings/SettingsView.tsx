@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { NativeSelect } from '@/components/ui/native-select';
+import { SHORTCUTS, shortcutKeys } from '@/features/shortcuts/shortcuts';
 import { SUPPORTED_LANGUAGES } from '@/i18n/languages';
 import { appInfo } from '@/lib/ipc';
 import {
@@ -120,6 +121,33 @@ export function SettingsView() {
             ))}
           </NativeSelect>
         </Field>
+      </section>
+
+      <section aria-labelledby={`${themeId}-shortcuts`} className="flex flex-col gap-3">
+        <h2 id={`${themeId}-shortcuts`} className="text-sm font-semibold text-muted-foreground">
+          {t('shortcuts.title')}
+        </h2>
+        <p className="text-xs text-muted-foreground">{t('shortcuts.description')}</p>
+        <table className="w-full text-sm">
+          <tbody>
+            {SHORTCUTS.map((shortcut) => (
+              <tr key={`${shortcut.action}-${shortcut.key}`} className="border-b last:border-0">
+                <td className="py-1.5">{t(`shortcuts.actions.${shortcut.action}`)}</td>
+                <td className="py-1.5 text-right">
+                  {shortcutKeys(shortcut).map((part, index) => (
+                    <span key={part}>
+                      {index > 0 && '+'}
+                      <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">
+                        {part === 'ctrl' || part === 'shift' ? t(`shortcuts.keys.${part}`) : part}
+                      </kbd>
+                    </span>
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-xs text-muted-foreground">{t('shortcuts.pasteAlternative')}</p>
       </section>
 
       <section className="flex flex-col gap-2">

@@ -60,6 +60,64 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
+  integration:
+    name: Intégration SSH (OpenSSH en conteneur)
+    runs-on: ubuntu-22.04
+    # Aucun secret GitHub : le mot de passe et les clés de test sont générés à chaque exécution,
+    # jetés à la fin du job et masqués dans les journaux.
+    env:
+      YOUNJI_TEST_REQUIRED: '1'
+      YOUNJI_TEST_SSH_HOST: 127.0.0.1
+      YOUNJI_TEST_SSH_PORT: '2222'
+      YOUNJI_TEST_SSH_USER: testpwd
+      YOUNJI_TEST_SSH_KEY_USER: testkey
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Générer le mot de passe et les clés de test
+        run: |
+          dir="$RUNNER_TEMP/younji-test"
+          install -d -m 700 "$dir"
+          password="$(openssl rand -hex 24)"
+          passphrase="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "::add-mask::$passphrase"
+          ssh-keygen -q -t ed25519 -N "$passphrase" -C younji-ci -f "$dir/id_ed25519"
+          ssh-keygen -q -t ecdsa -b 256 -N "" -C younji-ci -f "$dir/id_ecdsa"
+          ssh-keygen -q -t rsa -b 3072 -N "" -C younji-ci -f "$dir/id_rsa"
+          cat "$dir"/id_*.pub > "$dir/authorized_keys"
+          # Le mot de passe passe au conteneur par un fichier, pas par la ligne de commande.
+          printf 'TEST_PASSWORD=%s\n' "$password" > "$dir/sshd.env"
+          {
+            echo "YOUNJI_TEST_SSH_PASSWORD=$password"
+            echo "YOUNJI_TEST_SSH_KEY_PATH=$dir/id_ed25519"
+            echo "YOUNJI_TEST_SSH_KEY_PASSPHRASE=$passphrase"
+            echo "YOUNJI_TEST_SSH_EXTRA_KEYS=$dir/id_ecdsa;$dir/id_rsa"
+            echo "YOUNJI_TEST_DIR=$dir"
+          } >> "$GITHUB_ENV"
+      - name: Démarrer le serveur OpenSSH de test
+        run: |
+          docker build -t younji-sshd tests/docker/sshd
+          docker run -d --name younji-sshd -p 127.0.0.1:2222:22 \
+            --env-file "$YOUNJI_TEST_DIR/sshd.env" \
+            -v "$YOUNJI_TEST_DIR/authorized_keys:/keys/authorized_keys:ro" \
+            younji-sshd
+          for _ in $(seq 1 30); do
+            if ssh-keyscan -p 2222 127.0.0.1 >/dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          docker logs younji-sshd
+          exit 1
+      - name: Tests d'intégration
+        run: cargo test -p core-ssh --locked -- --ignored
+      - name: Journaux du serveur (en cas d'échec)
+        if: failure()
+        run: docker logs younji-sshd
+
   cargo-deny:
     name: cargo-deny (avis, licences, sources)
     runs-on: ubuntu-22.04

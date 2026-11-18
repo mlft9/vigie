@@ -11,7 +11,11 @@ export interface IsolationMessage {
 
 export interface IsolationWindow {
   __TAURI_ISOLATION_HOOK__: (message: unknown) => IsolationMessage;
-  __YOUNJI_ISOLATION__: { allowedCommands: readonly string[]; deniedCommand: string };
+  __YOUNJI_ISOLATION__: {
+    allowedCommands: readonly string[];
+    internalCommands: readonly string[];
+    deniedCommand: string;
+  };
 }
 
 /** Charge le script d'isolation dans un contexte vierge, comme le ferait l'iframe sandboxée. */

@@ -13,13 +13,34 @@
   'use strict';
 
   /** Commandes que l'interface a le droit d'appeler. À tenir à jour avec build.rs et les capabilities. */
-  var ALLOWED_COMMANDS = Object.freeze(['app_info']);
+  var ALLOWED_COMMANDS = Object.freeze([
+    'app_info',
+    'ssh_connect',
+    'ssh_write',
+    'ssh_resize',
+    'ssh_ack',
+    'ssh_host_key_decision',
+    'ssh_close',
+    'ssh_pick_key_file',
+    'open_external_url',
+  ]);
+
+  /**
+   * Commandes internes de Tauri indispensables au fonctionnement de l'IPC.
+   * - `plugin:__TAURI_CHANNEL__|fetch` : récupération des messages de `Channel` de plus de
+   *   1 Kio (sortie du terminal). Tauri l'exempte d'ACL ; elle ne renvoie qu'une donnée déjà
+   *   destinée à cette fenêtre, une seule fois, désignée par un identifiant aléatoire.
+   */
+  var INTERNAL_COMMANDS = Object.freeze(['plugin:__TAURI_CHANNEL__|fetch']);
 
   /** Nom volontairement absent du cœur : un appel refusé échoue avec une erreur. */
   var DENIED_COMMAND = 'younji_isolation_denied';
 
   function isAllowed(cmd) {
-    return typeof cmd === 'string' && ALLOWED_COMMANDS.indexOf(cmd) !== -1;
+    return (
+      typeof cmd === 'string' &&
+      (ALLOWED_COMMANDS.indexOf(cmd) !== -1 || INTERNAL_COMMANDS.indexOf(cmd) !== -1)
+    );
   }
 
   function hook(message) {
@@ -38,6 +59,10 @@
 
   Object.defineProperty(root, '__TAURI_ISOLATION_HOOK__', { value: hook });
   Object.defineProperty(root, '__YOUNJI_ISOLATION__', {
-    value: Object.freeze({ allowedCommands: ALLOWED_COMMANDS, deniedCommand: DENIED_COMMAND }),
+    value: Object.freeze({
+      allowedCommands: ALLOWED_COMMANDS,
+      internalCommands: INTERNAL_COMMANDS,
+      deniedCommand: DENIED_COMMAND,
+    }),
   });
 })(window);

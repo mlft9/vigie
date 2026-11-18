@@ -1,7 +1,7 @@
 # Environnement de test (lab Proxmox)
 
 Ce lab sert aux tests manuels de chaque étape et aux tests d'intégration lancés en local.
-En CI, un conteneur `sshd` remplace la VM Linux (créé à l'étape 1 dans `tests/docker/`).
+En CI, un conteneur OpenSSH (`tests/docker/sshd/`, depuis l'étape 1) remplace la VM Linux ; il peut aussi servir en local (§6).
 
 ## 1. Règles du lab
 - **Réseau isolé** : un pont ou un VLAN dédié (ex. `vmbr1`) en NAT, **jamais exposé à Internet**. Les comptes de test ont volontairement des configurations variées, parfois faibles.
@@ -107,5 +107,30 @@ YOUNJI_TEST_SSH_USER=testpwd
 YOUNJI_TEST_SSH_PASSWORD=...
 YOUNJI_TEST_SSH_KEY_USER=testkey
 YOUNJI_TEST_SSH_KEY_PATH=C:/Users/<toi>/.younji-lab/younji_test_ed25519
+YOUNJI_TEST_SSH_KEY_PASSPHRASE=...
+YOUNJI_TEST_SSH_EXTRA_KEYS=C:/Users/<toi>/.younji-lab/younji_test_ecdsa;C:/Users/<toi>/.younji-lab/younji_test_rsa
 ```
-Puis lance `npm run test:integration`. Utilise une **clé dédiée aux tests**, jamais ta clé personnelle.
+
+| Variable | Rôle |
+|---|---|
+| `YOUNJI_TEST_SSH_HOST`, `YOUNJI_TEST_SSH_PORT` | Serveur de test (port 22 par défaut) |
+| `YOUNJI_TEST_SSH_USER`, `YOUNJI_TEST_SSH_PASSWORD` | Compte à mot de passe (`testpwd`) |
+| `YOUNJI_TEST_SSH_KEY_USER`, `YOUNJI_TEST_SSH_KEY_PATH` | Compte à clé (`testkey`) et sa clé privée |
+| `YOUNJI_TEST_SSH_KEY_PASSPHRASE` | Passphrase de cette clé (facultative) |
+| `YOUNJI_TEST_SSH_EXTRA_KEYS` | Autres clés **non chiffrées** pour `testkey` (ECDSA, RSA…), séparées par `;` (facultatif) |
+| `YOUNJI_TEST_REQUIRED` | `1` : une variable manquante fait échouer le test au lieu de l'ignorer (utilisé en CI) |
+
+Puis lance `npm run test:integration` : le script charge `.env.test` automatiquement s'il existe (sans afficher les valeurs), puis lance les tests marqués `#[ignore]`. Chaque test part d'un `known_hosts` vierge, dans un dossier temporaire. Utilise des **clés dédiées aux tests**, jamais ta clé personnelle, et range-les hors du dossier du projet.
+
+### Avec le conteneur OpenSSH (Docker), sans la VM
+Le serveur de la CI fonctionne aussi en local. Il crée `testpwd` (mot de passe lu dans `TEST_PASSWORD`) et `testkey` (clé uniquement, clés publiques lues dans `/keys/authorized_keys`), et régénère ses clés d'hôte à chaque démarrage. Exemple en shell POSIX (sous Git Bash, préfixer `docker run` par `MSYS_NO_PATHCONV=1` et donner au volume un chemin Windows `C:/Users/<toi>/…`, sinon Git Bash réécrit `/keys/…`) :
+```bash
+dir=~/.younji-lab/docker && install -d -m 700 "$dir"
+ssh-keygen -q -t ed25519 -f "$dir/id_ed25519" -C younji-lab        # passphrase demandée
+cat "$dir"/id_*.pub > "$dir/authorized_keys"
+printf 'TEST_PASSWORD=%s\n' "$(openssl rand -hex 24)" > "$dir/sshd.env"   # pas sur la ligne de commande
+docker build -t younji-sshd tests/docker/sshd
+docker run -d --rm --name younji-sshd -p 127.0.0.1:2222:22 \
+  --env-file "$dir/sshd.env" -v "$dir/authorized_keys:/keys/authorized_keys:ro" younji-sshd
+```
+Puis, dans `.env.test` : `YOUNJI_TEST_SSH_HOST=127.0.0.1`, `YOUNJI_TEST_SSH_PORT=2222`, `YOUNJI_TEST_SSH_USER=testpwd`, le mot de passe de `sshd.env`, `YOUNJI_TEST_SSH_KEY_USER=testkey` et les chemins des clés. Arrête le conteneur avec `docker stop younji-sshd`.

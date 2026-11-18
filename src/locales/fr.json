@@ -14,7 +14,12 @@
   },
   "tabs": {
     "label": "Onglets",
-    "home": "Accueil"
+    "home": "Accueil",
+    "newSession": "Nouvelle session",
+    "new": "Nouvelle session (Ctrl+Maj+T)",
+    "close": "Fermer l'onglet {{title}}",
+    "renameLabel": "Nom de l'onglet",
+    "renameHint": "Double-clic ou F2 pour renommer, glisser pour déplacer"
   },
   "sections": {
     "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
@@ -47,10 +52,153 @@
       "unavailable": "indisponible"
     }
   },
+  "common": {
+    "cancel": "Annuler"
+  },
+  "connect": {
+    "title": "Connexion rapide",
+    "reconnectTitle": "Se reconnecter",
+    "host": "Hôte",
+    "hostPlaceholder": "serveur.exemple.fr ou 192.168.1.10",
+    "port": "Port",
+    "username": "Utilisateur",
+    "authMethod": "Authentification",
+    "auth": {
+      "password": "Mot de passe",
+      "key": "Clé privée"
+    },
+    "password": "Mot de passe",
+    "keyFile": "Fichier de clé",
+    "chooseKey": "Choisir une clé…",
+    "noKey": "Aucune clé sélectionnée",
+    "passphrase": "Passphrase",
+    "passphraseHint": "Laissez vide si la clé n'est pas protégée.",
+    "submit": "Se connecter"
+  },
+  "session": {
+    "connecting": "Connexion à {{host}}…",
+    "authenticating": "Authentification…",
+    "reconnect": "Reconnecter",
+    "closeTab": "Fermer l'onglet"
+  },
+  "hostKey": {
+    "presented": "Clé présentée par le serveur",
+    "unknown": {
+      "title": "Hôte inconnu",
+      "intro": "C'est la première connexion à {{host}}. Younji ne peut pas encore garantir que ce serveur est bien celui que vous croyez.",
+      "verify": "Comparez cette empreinte avec celle du serveur avant d'accepter : sur le serveur, ssh-keygen -lf /etc/ssh/ssh_host_<type>_key.pub, où <type> correspond à l'algorithme affiché (ed25519, ecdsa ou rsa). Une fois acceptée, la clé est mémorisée.",
+      "reject": "Refuser",
+      "accept": "Accepter et se connecter"
+    },
+    "changed": {
+      "title": "Clé d'hôte modifiée : connexion bloquée",
+      "warning": "La clé présentée par {{host}} ne correspond pas à celle enregistrée.",
+      "explanation": "Quelqu'un tente peut-être d'intercepter la connexion (attaque de l'homme du milieu). Il peut aussi s'agir d'un serveur réinstallé ou de clés régénérées. Aucun identifiant n'a été envoyé.",
+      "known": "Clé enregistrée",
+      "unblockTitle": "Si le changement est légitime",
+      "unblock": "Vérifiez la nouvelle empreinte auprès de l'administrateur du serveur, puis supprimez la ligne commençant par {{host}} dans le fichier ci-dessous. La gestion des clés d'hôte arrivera dans l'interface à l'étape 2.",
+      "close": "Fermer l'onglet"
+    },
+    "unreadable": "(clé enregistrée illisible)"
+  },
+  "terminal": {
+    "menu": "Actions du terminal",
+    "copy": "Copier",
+    "paste": "Coller",
+    "search": "Rechercher"
+  },
+  "search": {
+    "label": "Rechercher dans le terminal",
+    "placeholder": "Rechercher…",
+    "previous": "Résultat précédent",
+    "next": "Résultat suivant",
+    "close": "Fermer la recherche",
+    "notFound": "Aucun résultat"
+  },
+  "paste": {
+    "title": "Confirmer le collage",
+    "lines_one": "Le texte à coller tient sur {{count}} ligne.",
+    "lines_other": "Le texte à coller contient {{count}} lignes : chaque retour à la ligne exécutera une commande.",
+    "controlCharacters": "Attention : il contient des caractères de contrôle invisibles (affichés ci-dessous par des symboles).",
+    "preview": "Aperçu du texte à coller",
+    "truncated": "Aperçu tronqué : le texte complet sera collé.",
+    "confirm": "Coller"
+  },
+  "link": {
+    "title": "Ouvrir ce lien ?",
+    "description": "Le texte affiché dans le terminal peut différer de l'adresse réelle. Vérifiez-la avant de l'ouvrir dans votre navigateur :",
+    "open": "Ouvrir dans le navigateur"
+  },
+  "shortcuts": {
+    "keys": {
+      "ctrl": "Ctrl",
+      "shift": "Maj"
+    },
+    "title": "Raccourcis clavier",
+    "description": "Ils utilisent Ctrl+Maj pour laisser au shell ses propres raccourcis (Ctrl+C, Ctrl+R, Ctrl+W…).",
+    "pasteAlternative": "Maj+Inser colle aussi dans le terminal. Les liens s'ouvrent par Ctrl+clic.",
+    "actions": {
+      "newTab": "Nouvelle session",
+      "closeTab": "Fermer l'onglet",
+      "nextTab": "Onglet suivant",
+      "previousTab": "Onglet précédent",
+      "moveTabLeft": "Déplacer l'onglet à gauche",
+      "moveTabRight": "Déplacer l'onglet à droite",
+      "search": "Rechercher dans le terminal",
+      "copy": "Copier la sélection",
+      "paste": "Coller"
+    }
+  },
   "errors": {
     "unknown": "Une erreur inattendue est survenue.",
+    "internal": "Erreur interne de l'application. Consultez le journal pour plus de détails.",
     "ipc": {
       "command_denied": "Action refusée par l'application."
+    },
+    "dialog": {
+      "failed": "La fenêtre de sélection de fichier n'a pas pu s'ouvrir."
+    },
+    "url": {
+      "invalid": "Ce lien n'est pas autorisé : seuls les liens http et https peuvent être ouverts.",
+      "open_failed": "Le navigateur n'a pas pu être lancé."
+    },
+    "ssh": {
+      "invalid_host": "Adresse d'hôte invalide. Indiquez un nom d'hôte ou une adresse IP.",
+      "invalid_port": "Le port doit être compris entre 1 et 65535.",
+      "invalid_username": "Nom d'utilisateur invalide.",
+      "invalid_secret": "Le mot de passe ou la passphrase est vide ou trop long.",
+      "invalid_terminal_size": "Taille de terminal invalide.",
+      "invalid_input": "Saisie invalide.",
+      "input_too_large": "Texte trop volumineux pour être envoyé en une fois.",
+      "key_read_failed": "Impossible de lire le fichier de clé. Vérifiez qu'il existe et qu'il est accessible.",
+      "key_too_large": "Ce fichier est trop volumineux pour être une clé privée.",
+      "key_passphrase_required": "Cette clé est protégée : saisissez sa passphrase.",
+      "key_wrong_passphrase": "Passphrase incorrecte pour cette clé.",
+      "key_invalid": "Ce fichier n'est pas une clé privée reconnue (OpenSSH, PEM ou PuTTY).",
+      "key_file_unknown": "Fichier de clé inconnu : sélectionnez-le à nouveau.",
+      "dns_failed": "Hôte introuvable. Vérifiez l'adresse ou votre résolution DNS.",
+      "connection_refused": "Connexion refusée : aucun serveur SSH n'écoute sur ce port.",
+      "timeout": "Le serveur ne répond pas (délai dépassé).",
+      "connect_failed": "Connexion impossible. Vérifiez le réseau et l'adresse.",
+      "handshake_failed": "La négociation SSH a échoué (aucun algorithme sûr en commun ou connexion interrompue).",
+      "host_key_rejected": "Clé d'hôte refusée : connexion annulée.",
+      "host_key_changed": "Connexion bloquée : la clé de l'hôte a changé.",
+      "host_key_revoked": "Connexion bloquée : la clé de cet hôte est révoquée.",
+      "host_key_timeout": "Aucune décision sur la clé d'hôte : connexion annulée.",
+      "known_hosts_io": "Le fichier des clés d'hôte connues est illisible ou ne peut pas être écrit.",
+      "no_pending_decision": "Aucune clé d'hôte n'attend de décision.",
+      "auth_failed": "Authentification refusée. Vérifiez l'utilisateur et le mot de passe ou la clé.",
+      "channel_failed": "Le serveur a refusé d'ouvrir un terminal.",
+      "connection_lost": "Connexion perdue.",
+      "session_ended": "Session terminée.",
+      "session_closed": "Session fermée.",
+      "session_not_found": "Cette session n'existe plus.",
+      "too_many_sessions": "Trop de sessions ouvertes. Fermez-en avant d'en ouvrir une nouvelle."
+    },
+    "connect": {
+      "missing_fields": "Renseignez l'hôte et l'utilisateur.",
+      "missing_password": "Saisissez le mot de passe.",
+      "missing_key": "Choisissez un fichier de clé privée."
     }
   }
 }

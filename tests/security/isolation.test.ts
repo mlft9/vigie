@@ -13,7 +13,20 @@ describe("hook d'isolation", () => {
     expect(hook(message)).toBe(message);
   });
 
+  it('laisse passer la récupération des messages de Channel (interne à Tauri)', () => {
+    const message = { cmd: 'plugin:__TAURI_CHANNEL__|fetch', callback: 1, error: 2, payload: null };
+    expect(hook(message)).toBe(message);
+  });
+
+  it('limite les commandes internes à la seule récupération des Channel', () => {
+    expect(isolation.__YOUNJI_ISOLATION__.internalCommands).toEqual([
+      'plugin:__TAURI_CHANNEL__|fetch',
+    ]);
+  });
+
   it.each([
+    'plugin:__TAURI_CHANNEL__|other',
+    'plugin:__TAURI_CHANNEL__|fetch ',
     'plugin:shell|execute',
     'plugin:fs|read_file',
     'APP_INFO',

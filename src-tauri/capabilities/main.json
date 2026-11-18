@@ -1,7 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Fenêtre principale : uniquement les commandes applicatives nécessaires, aucun plugin.",
+  "description": "Fenêtre principale : uniquement les commandes applicatives nécessaires, aucune permission de plugin.",
   "windows": ["main"],
-  "permissions": ["allow-app-info"]
+  "permissions": [
+    "allow-app-info",
+    "allow-ssh-connect",
+    "allow-ssh-write",
+    "allow-ssh-resize",
+    "allow-ssh-ack",
+    "allow-ssh-host-key-decision",
+    "allow-ssh-close",
+    "allow-ssh-pick-key-file",
+    "allow-open-external-url"
+  ]
 }

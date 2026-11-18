@@ -22,6 +22,14 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 015 | Modèle d'isolation Tauri et commandes soumises aux capabilities | Acceptée |
 | 016 | Dépôt public dès l'étape 0 | Acceptée |
 | 017 | Nouveau nom : Younji | Acceptée |
+| 018 | CSP : balises `<style>` en ligne autorisées pour xterm.js | Acceptée |
+| 019 | russh 0.65.2, moteur `ring`, algorithmes explicites | Acceptée |
+| 020 | Clé privée choisie par la boîte de dialogue du système, désignée par identifiant | Acceptée |
+| 021 | Reconnexion sans secret mémorisé (provisoire jusqu'à l'étape 2) | Acceptée |
+| 022 | Liens du terminal : http(s), Ctrl+clic, revalidation côté Rust | Acceptée |
+| 023 | TOFU strict : anti-rétrogradation et `known_hosts` en clair | Acceptée |
+| 024 | Flux du terminal : acquittement et deux `Channel` | Acceptée |
+| 025 | xterm.js 5.5 plutôt que 6, pour garder `freezePrototype` | Acceptée |
 
 ---
 
@@ -175,3 +183,98 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - `.gitignore` et les règles `deny` de Claude Code gardent aussi les anciens motifs `vigie_test_*` / `~/.vigie-lab/`, pour protéger d'éventuelles clés de test déjà générées.
 - Le dépôt GitHub est renommé par le porteur ; GitHub redirige automatiquement l'ancienne adresse.
 - Avant toute diffusion commerciale ou tout gain de notoriété, envisager le dépôt de la marque « Younji » en classes 9 et 42.
+
+## ADR-018 — CSP : balises `<style>` en ligne autorisées pour xterm.js
+**Statut** : Acceptée (18/11/2026), décision du porteur
+**Contexte** : xterm.js 6 injecte des balises `<style>` dynamiques (barre de défilement, rendu DOM de repli). La CSP de production (`style-src 'self'`) les bloquait, alors que la CSP de développement autorisait déjà les styles en ligne : le terminal aurait fonctionné en `npm run tauri dev` et cassé dans l'installeur.
+**Décision** : ajouter la seule directive `style-src-elem 'self' 'unsafe-inline'`, en production comme en développement. `style-src 'self'` reste inchangé en production : les attributs `style="…"` restent interdits. Scripts et sources distantes inchangés. `tests/security/tauri-config.test.ts` vérifie que `'unsafe-inline'` n'apparaît que dans `style-src` et `style-src-elem`.
+**Alternatives écartées** :
+- Rendu WebGL obligatoire, sans repli DOM : le terminal deviendrait inutilisable sur une VM sans accélération graphique ou sous WebKitGTK.
+- `style-src 'unsafe-inline'` global : ouvrirait aussi les attributs `style`, sans besoin.
+
+**Conséquences** : risque jugé faible. Une feuille de style injectée pourrait modifier l'affichage, mais pas exfiltrer de données : `img-src`, `font-src` et `connect-src` n'autorisent aucune origine distante. La CSP de développement doit rester aussi proche que possible de celle de production, pour éviter un nouveau « marche en dev, casse dans l'installeur ».
+
+## ADR-019 — russh 0.65.2, moteur `ring`, algorithmes explicites
+**Statut** : Acceptée (18/11/2026)
+**Contexte** : ADR-002 retient russh. Il faut choisir sa version, son moteur cryptographique et les algorithmes négociés.
+**Décision** :
+- `russh` **0.65.2**, sans les fonctionnalités par défaut, avec `ring` et `rsa`. Pas de compression.
+- La 0.65.2 est adoptée **avant la fin du délai de 7 jours** prévu pour les nouvelles versions (Dependabot, `cooldown`) : la 0.65.1 imposait `rsa 0.10.0-rc.18`, touchée par RUSTSEC-2023-0071 (attaque temporelle Marvin) ; la 0.65.2 utilise `rsa 0.10.0`, corrigée.
+- Algorithmes listés explicitement dans `crates/core-ssh/src/config.rs`, sans dépendre des défauts de russh : échange de clés hybride `mlkem768x25519-sha256` en tête, puis curve25519, ECDH NIST, DH groupes 14/16/18 en SHA-2, strict kex (parade à Terrapin) ; chiffrements ChaCha20-Poly1305 et AES-GCM, AES-CTR en repli avec MAC `*-etm` SHA-2 ; clés d'hôte Ed25519, ECDSA, `rsa-sha2-512/256`. Exclus : SHA-1, CBC, 3DES, DSA, DH group exchange, `none`, compression, certificats d'hôte. Un test échoue si un algorithme faible réapparaît.
+
+**Alternatives écartées** :
+- Moteur `aws-lc-rs` (défaut de russh) : exige CMake et la compilation de code C sous Windows, ce qui alourdit le poste de développement et la CI.
+- Rester sur 0.65.1 jusqu'à la fin du délai : dépendance vulnérable connue.
+
+**Conséquences** : aucune dépendance C pour SSH. La liste explicite peut refuser un vieil équipement ; une option « algorithmes hérités » par hôte passerait par un nouvel ADR (`SECURITE.md` §4.1).
+
+## ADR-020 — Clé privée choisie par la boîte de dialogue du système, désignée par identifiant
+**Statut** : Acceptée (18/11/2026), décision du porteur
+**Contexte** : AUTH-02 demande l'authentification par clé. La WebView est non fiable (`SECURITE.md` §5) : si elle pouvait transmettre un chemin, un script compromis ferait lire au cœur n'importe quel fichier.
+**Décision** : la commande `ssh_pick_key_file` ouvre la boîte de dialogue de fichiers du système **depuis Rust** (`tauri-plugin-dialog`, initialisé côté Rust, **aucune permission du plugin accordée à la WebView**). Le chemin choisi reste dans `SessionManager` ; l'interface reçoit un identifiant opaque et le nom du fichier, sans le dossier. `ssh_connect` n'accepte qu'un identifiant connu. 32 fichiers au plus sont mémorisés pendant l'exécution ; les plus anciens sont oubliés.
+**Alternatives écartées** :
+- Chemin saisi dans un champ texte : le cœur lirait un chemin fourni par la WebView.
+- Contenu de la clé collé dans l'interface : la clé privée transiterait par la WebView.
+
+**Conséquences** : la WebView ne connaît ni l'arborescence ni le contenu de la clé. Le fichier est relu à chaque connexion (64 Kio au plus). L'import de clés dans le coffre arrive à l'étape 2.
+
+## ADR-021 — Reconnexion sans secret mémorisé (provisoire jusqu'à l'étape 2)
+**Statut** : Acceptée (18/11/2026), décision du porteur. Provisoire : à revoir avec le coffre (étape 2).
+**Contexte** : SSH-06 demande un bouton « Reconnecter ». Sans coffre, garder le mot de passe ou la passphrase pour la reconnexion les laisserait en mémoire pendant toute la vie de l'onglet.
+**Décision** : « Reconnecter » rouvre le formulaire pré-rempli (hôte, port, utilisateur, fichier de clé) et redemande le mot de passe ou la passphrase. Le cœur détruit les identifiants dès la fin de l'authentification ; l'interface vide le champ dès l'envoi et ne garde aucun secret dans un store.
+**Alternatives écartées** : mémoriser le secret côté Rust pendant la vie de l'onglet (plus confortable, mais secret en mémoire sans la protection du coffre).
+**Conséquences** : une saisie de plus à chaque reconnexion. Avec le coffre, la reconnexion pourra réutiliser une identité désignée par son identifiant.
+
+## ADR-022 — Liens du terminal : http(s), Ctrl+clic, revalidation côté Rust
+**Statut** : Acceptée (18/11/2026), décision du porteur sur `http:` + `https:`
+**Contexte** : SSH-05 demande des liens cliquables. Le serveur contrôle le texte affiché, y compris les liens OSC 8, dont le texte peut masquer la vraie cible.
+**Décision** :
+- Seuls `http:` et `https:` sont ouverts (`http:` pour les services du lab), avec un hôte et sans identifiants intégrés (`user:pass@`).
+- Ouverture au **Ctrl+clic** uniquement. Un lien OSC 8 passe par une confirmation qui affiche l'adresse réelle.
+- La commande `open_external_url` **revalide** l'adresse côté Rust (2048 caractères au plus, aucun caractère de contrôle) puis la transmet au système via la crate `open`, en argument de processus, jamais à un shell.
+
+**Alternatives écartées** :
+- `tauri-plugin-opener` : tirait `zbus` 5, signalé non maintenu par cargo-deny.
+- `https:` seul : bloquerait les interfaces web du lab.
+
+**Conséquences** : aucune permission de plugin d'ouverture dans les capabilities. `.claude/rules/tauri-config.md` est aligné sur cette règle.
+
+## ADR-023 — TOFU strict : anti-rétrogradation et `known_hosts` en clair
+**Statut** : Acceptée (18/11/2026). Précise ADR-006.
+**Contexte** : mise en œuvre d'HKY-01 à HKY-03. Avec un TOFU naïf, un homme du milieu qui présente une clé d'un **autre type** que celle enregistrée retomberait sur une simple demande de confiance.
+**Décision** :
+- Hôte connu (au moins une ligne pour `hôte` ou `[hôte]:port`) et clé présentée absente de la liste : **connexion bloquée**, même si le type de clé diffère. Une ligne illisible qui nomme l'hôte compte comme une clé connue : elle bloque au lieu de redemander confiance. Une clé `@revoked` est refusée.
+- La clé acceptée est enregistrée dans `check_server_key`, que russh appelle après avoir vérifié la signature du serveur sur l'échange de clés : le serveur a prouvé qu'il détient la clé privée correspondante.
+- Fichier `known_hosts` dans `app_data_dir`, au format OpenSSH, **en clair et sans hachage des noms**, écrit de façon atomique (0600 sous Linux). Les lignes hachées, les motifs et `@cert-authority` sont ignorés.
+- Déblocage manuel en attendant HKY-04 (étape 2) : l'alerte affiche le chemin du fichier et le début exact de la ligne à supprimer, fourni par le cœur.
+
+**Alternatives écartées** :
+- Accepter un nouveau type de clé pour un hôte connu : ouvre la rétrogradation.
+- Hacher les noms d'hôtes (`HashKnownHosts`) : protège peu un fichier local et empêcherait d'afficher la liste dans la future gestion des clés d'hôte.
+
+**Conséquences** : un serveur qui ajoute un type de clé d'hôte est bloqué jusqu'à la suppression manuelle de ses lignes. L'emplacement définitif de `known_hosts` (fichier ou coffre) reste à trancher à l'étape 2 (ADR-006).
+
+## ADR-024 — Flux du terminal : acquittement et deux `Channel`
+**Statut** : Acceptée (18/11/2026)
+**Contexte** : un `cat` de plusieurs gigaoctets ou `yes` ne doit ni figer l'interface ni faire grossir la mémoire sans limite. Deux appels IPC peuvent aussi s'exécuter dans le désordre côté Rust.
+**Décision** :
+- Sortie regroupée par lots (8 ms ou 32 Kio). L'interface acquitte les octets affichés (`ssh_ack`) ; au-delà de **2 Mio non acquittés**, la session cesse de lire le canal SSH, la fenêtre SSH se remplit et le serveur s'arrête d'émettre. Un acquittement excessif ramène le compteur à zéro sans déborder.
+- Deux `Channel` par session : **octets bruts** pour la sortie (sans encodage JSON), **JSON** pour les événements d'état.
+- Saisie sérialisée côté interface : un seul `ssh_write` en cours, découpage à 64 Kio (limite revérifiée par le cœur).
+- Les messages de `Channel` de plus de 1 Kio sont récupérés par la commande interne `plugin:__TAURI_CHANNEL__|fetch`, ajoutée à la liste des commandes internes de l'isolation (`isolation/index.js`). Tauri l'exempte d'ACL ; elle ne renvoie qu'un message déjà destiné à la fenêtre, une seule fois, désigné par un identifiant aléatoire.
+
+**Alternatives écartées** :
+- Événements globaux Tauri : non ciblés par session et sérialisés en JSON.
+- Pas de contrôle de flux : mémoire non bornée, interface submergée.
+
+**Conséquences** : mémoire bornée par session. Toute autre commande interne de Tauri reste refusée par l'isolation ; un test le vérifie.
+
+## ADR-025 — xterm.js 5.5 plutôt que 6, pour garder `freezePrototype`
+**Statut** : Acceptée (18/11/2026), décision du porteur. Précise ADR-003 (choix de xterm.js) ; ADR-018 reste valable, xterm.js 5.5 injectant aussi des balises `<style>`.
+**Contexte** : au premier lancement réel (`npm run tauri dev`), la fenêtre restait blanche. Tauri gèle `Object.prototype` avant tout script (`freezePrototype: true`, durcissement contre la pollution de prototype). Le code de VS Code embarqué dans xterm.js 6 (espace de noms `KeyCodeUtils`) affecte `toString` à un objet ordinaire dès le chargement du module : en mode strict, l'affectation d'une propriété héritée en lecture seule lève une exception, et tout le JavaScript de l'application échoue. Les tests ne le voyaient pas, car ils tournaient sans ce gel.
+**Décision** : revenir à la génération xterm.js 5.5 (`@xterm/xterm` 5.5.0, addons fit 0.10, search 0.15, web-links 0.11, unicode11 0.8, webgl 0.18), vérifiée compatible avec le prototype gelé, et garder `freezePrototype`. Un test de non-régression (`src/frozen-prototype.test.tsx`) gèle `Object.prototype`, puis charge xterm.js et ses addons, affiche l'application et ouvre un terminal.
+**Alternatives écartées** :
+- Désactiver `freezePrototype` : retire une défense en profondeur contre une dépendance npm compromise (menace M4).
+- Réécrire l'affectation fautive de xterm.js 6 à la compilation (plugin Vite) : rustine fragile, à revérifier à chaque mise à jour.
+
+**Conséquences** : les fonctions utilisées sont identiques en 5.5. Une mise à jour vers xterm.js 6 (Dependabot) fera échouer le test de non-régression tant que xterm.js n'aura pas corrigé ce point ; à réexaminer à chaque version majeure.
