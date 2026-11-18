@@ -42,6 +42,7 @@ const IDENTITY: IdentityEntry = {
   keyId: null,
 };
 const KNOWN: KnownHostEntry = {
+  line: 0,
   hosts: '[srv.lab]:2222',
   algorithm: 'ssh-ed25519',
   fingerprint: 'SHA256:ancienne',

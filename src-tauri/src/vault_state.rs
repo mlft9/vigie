@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use core_ssh::{KnownHostsStorage, SshError};
 use core_vault::{Vault, VaultData, VaultError, VaultFileStatus, file_status};
@@ -68,9 +68,38 @@ pub fn unlock_delay(failures: u32) -> Duration {
     Duration::from_secs(1 << exponent).min(MAX_UNLOCK_DELAY)
 }
 
-/// Vrai si le délai d'inactivité est écoulé.
-pub fn idle_expired(last_activity: Instant, now: Instant, minutes: u32) -> bool {
-    now.saturating_duration_since(last_activity) >= Duration::from_secs(u64::from(minutes) * 60)
+/// Instant de la dernière activité, selon deux horloges.
+#[derive(Debug, Clone, Copy)]
+pub struct Activity {
+    /// Horloge monotone : insensible aux changements d'heure, mais arrêtée pendant la veille
+    /// sous Linux.
+    pub monotonic: Instant,
+    /// Horloge murale : avance pendant la veille.
+    pub wall: SystemTime,
+}
+
+impl Activity {
+    /// Maintenant.
+    pub fn now() -> Self {
+        Self {
+            monotonic: Instant::now(),
+            wall: SystemTime::now(),
+        }
+    }
+}
+
+/// Vrai si le délai d'inactivité est écoulé selon **l'une ou l'autre** horloge. L'horloge
+/// murale couvre la mise en veille (un portable rouvert après des heures se verrouille tout de
+/// suite) ; une horloge murale qui recule n'empêche jamais le verrouillage, car l'horloge
+/// monotone s'applique toujours.
+pub fn idle_expired(last: Activity, now: Activity, minutes: u32) -> bool {
+    let delay = Duration::from_secs(u64::from(minutes) * 60);
+    let monotonic = now.monotonic.saturating_duration_since(last.monotonic) >= delay;
+    let wall = now
+        .wall
+        .duration_since(last.wall)
+        .is_ok_and(|elapsed| elapsed >= delay);
+    monotonic || wall
 }
 
 /// Partie partagée avec le stockage des clés d'hôte.
@@ -92,7 +121,7 @@ pub struct VaultState {
     shared: Arc<Shared>,
     /// Sérialise les tentatives de déverrouillage et compte les échecs consécutifs.
     attempts: tokio::sync::Mutex<u32>,
-    last_activity: Mutex<Instant>,
+    last_activity: Mutex<Activity>,
     watcher: Mutex<Option<Channel<VaultEventDto>>>,
 }
 
@@ -106,7 +135,7 @@ impl VaultState {
                 vault: Mutex::new(None),
             }),
             attempts: tokio::sync::Mutex::new(0),
-            last_activity: Mutex::new(Instant::now()),
+            last_activity: Mutex::new(Activity::now()),
             watcher: Mutex::new(None),
         }
     }
@@ -227,14 +256,21 @@ impl VaultState {
         f(vault)
     }
 
-    /// Modifie les données et sauvegarde (rien ne change en cas d'échec).
-    pub fn update<T>(
+    /// Modifie les données et sauvegarde (rien ne change en cas d'échec), hors du fil appelant :
+    /// le chiffrement et l'écriture atomique (`fsync`, copie `.bak`) ne bloquent ni l'interface
+    /// ni l'exécuteur async.
+    pub async fn update_blocking<T: Send + 'static>(
         &self,
-        f: impl FnOnce(&mut VaultData) -> Result<T, VaultError>,
+        f: impl FnOnce(&mut VaultData) -> Result<T, VaultError> + Send + 'static,
     ) -> Result<T, AppError> {
-        let mut guard = self.shared.lock()?;
-        let vault = guard.as_mut().ok_or(AppError::VAULT_LOCKED)?;
-        vault.update(f).map_err(Into::into)
+        let shared = self.shared.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut guard = shared.lock()?;
+            let vault = guard.as_mut().ok_or(AppError::VAULT_LOCKED)?;
+            vault.update(f).map_err(AppError::from)
+        })
+        .await
+        .map_err(|_| AppError::INTERNAL)?
     }
 
     /// Change le mot de passe maître (deux dérivations Argon2id, hors de l'exécuteur async).
@@ -278,12 +314,12 @@ impl VaultState {
     /// Note une activité de l'utilisateur (remet le minuteur à zéro).
     pub fn touch(&self) {
         if let Ok(mut last) = self.last_activity.lock() {
-            *last = Instant::now();
+            *last = Activity::now();
         }
     }
 
     /// Vrai si le coffre est déverrouillé et inactif depuis plus que le délai configuré.
-    pub fn idle_lock_due(&self, now: Instant) -> bool {
+    pub fn idle_lock_due(&self, now: Activity) -> bool {
         let Ok(guard) = self.shared.vault.lock() else {
             return false;
         };
@@ -353,35 +389,56 @@ mod tests {
         assert_eq!(unlock_delay(u32::MAX), Duration::from_secs(30));
     }
 
-    #[test]
-    fn idle_expiry_follows_the_configured_minutes() {
-        let start = Instant::now();
-        assert!(!idle_expired(start, start + Duration::from_secs(59), 1));
-        assert!(idle_expired(start, start + Duration::from_secs(60), 1));
-        assert!(!idle_expired(
-            start,
-            start + Duration::from_secs(14 * 60),
-            15
-        ));
-        // Horloge qui recule : jamais d'expiration intempestive ni de panique.
-        assert!(!idle_expired(start + Duration::from_secs(10), start, 1));
+    fn after(start: Activity, monotonic: u64, wall: i64) -> Activity {
+        let wall = if wall >= 0 {
+            start.wall + Duration::from_secs(wall.unsigned_abs())
+        } else {
+            start.wall - Duration::from_secs(wall.unsigned_abs())
+        };
+        Activity {
+            monotonic: start.monotonic + Duration::from_secs(monotonic),
+            wall,
+        }
     }
 
     #[test]
-    fn locked_state_refuses_access_and_known_hosts() {
+    fn idle_expiry_follows_the_configured_minutes() {
+        let start = Activity::now();
+        assert!(!idle_expired(start, after(start, 59, 59), 1));
+        assert!(idle_expired(start, after(start, 60, 60), 1));
+        assert!(!idle_expired(start, after(start, 14 * 60, 14 * 60), 15));
+    }
+
+    #[test]
+    fn sleep_is_counted_by_the_wall_clock() {
+        // Mise en veille : l'horloge monotone (Linux) n'a presque pas avancé, l'horloge murale
+        // de plusieurs heures. Le coffre doit se verrouiller.
+        let start = Activity::now();
+        assert!(idle_expired(start, after(start, 60, 4 * 3600), 15));
+    }
+
+    #[test]
+    fn a_wall_clock_going_back_never_prevents_locking() {
+        let start = Activity::now();
+        assert!(!idle_expired(start, after(start, 10, -3600), 1));
+        assert!(idle_expired(start, after(start, 60, -3600), 1));
+    }
+
+    #[tokio::test]
+    async fn locked_state_refuses_access_and_known_hosts() {
         let dir = tempfile::tempdir().unwrap();
         let state = VaultState::new(dir.path().join("vault.younji"), dir.path().join("kh"));
         assert_eq!(state.status().unwrap(), VaultStatus::Missing);
         assert!(!state.is_unlocked());
         assert_eq!(state.read(|_| Ok(())).unwrap_err(), AppError::VAULT_LOCKED);
         assert_eq!(
-            state.update(|_| Ok(())).unwrap_err(),
+            state.update_blocking(|_| Ok(())).await.unwrap_err(),
             AppError::VAULT_LOCKED
         );
         let storage = state.known_hosts_storage();
         assert_eq!(storage.load(), Err(SshError::KnownHostsIo));
         assert!(!state.lock(LockReason::Manual));
-        assert!(!state.idle_lock_due(Instant::now()));
+        assert!(!state.idle_lock_due(Activity::now()));
     }
 
     #[tokio::test]
@@ -421,8 +478,8 @@ mod tests {
         state.unlock(SecretString::from(password)).await.unwrap();
         assert_eq!(storage.load().unwrap(), "");
         // Juste après une activité, pas de verrouillage automatique.
-        assert!(!state.idle_lock_due(Instant::now()));
-        assert!(state.idle_lock_due(Instant::now() + Duration::from_secs(15 * 60)));
+        assert!(!state.idle_lock_due(Activity::now()));
+        assert!(state.idle_lock_due(after(Activity::now(), 15 * 60, 15 * 60)));
 
         // Un mauvais mot de passe actuel compte comme un échec de déverrouillage.
         let wrong = AppError::from(VaultError::WrongPasswordOrCorrupted);

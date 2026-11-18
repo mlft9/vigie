@@ -74,9 +74,9 @@ export function KnownHostsList() {
       )}
       {entries && entries.length > 0 && (
         <ul aria-label={t('knownHosts.title')} className="flex flex-col gap-1">
-          {entries.map((entry, index) => (
-            // Position dans la liste : deux lignes peuvent être identiques.
-            <li key={index} className="flex items-center gap-3 rounded-md border px-3 py-2">
+          {entries.map((entry) => (
+            // Position de la ligne : unique, même si deux lignes sont identiques.
+            <li key={entry.line} className="flex items-center gap-3 rounded-md border px-3 py-2">
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="flex items-center gap-2 truncate font-mono text-sm">
                   {entry.revoked && (

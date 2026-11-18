@@ -15,6 +15,9 @@ pub enum VaultError {
     /// Un coffre existe déjà : la création n'écrase jamais un fichier.
     #[error("coffre déjà existant")]
     AlreadyExists,
+    /// Le coffre est absent mais sa copie de sauvegarde existe : à restaurer avant tout.
+    #[error("seule la copie de sauvegarde du coffre existe")]
+    BackupOnly,
     /// Le coffre est verrouillé.
     #[error("coffre verrouillé")]
     Locked,
@@ -94,6 +97,7 @@ impl VaultError {
         match self {
             Self::NotFound => "vault.not_found",
             Self::AlreadyExists => "vault.already_exists",
+            Self::BackupOnly => "vault.backup_only",
             Self::Locked => "vault.locked",
             Self::WrongPasswordOrCorrupted => "vault.wrong_password_or_corrupted",
             Self::InvalidFile => "vault.invalid_file",
@@ -124,6 +128,7 @@ impl VaultError {
     pub const ALL: &'static [Self] = &[
         Self::NotFound,
         Self::AlreadyExists,
+        Self::BackupOnly,
         Self::Locked,
         Self::WrongPasswordOrCorrupted,
         Self::InvalidFile,

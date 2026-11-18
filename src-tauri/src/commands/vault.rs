@@ -12,9 +12,13 @@ use crate::vault_state::{LockReason, VaultEventDto, VaultState, VaultStatus};
 
 /// Verrouille le coffre et ferme toutes les sessions SSH (ADR-026) : un poste laissé sans
 /// surveillance ne doit exposer ni les secrets du coffre ni un shell ouvert.
+///
+/// Ordre volontaire : le coffre d'abord, les sessions ensuite. Une connexion en cours de
+/// création vérifie, une fois sa session enregistrée, que le coffre est toujours déverrouillé
+/// (`spawn_session`) : aucune session ne peut donc survivre au verrouillage.
 pub fn lock_everything(app: &AppHandle, reason: LockReason) {
-    app.state::<SessionManager>().close_all_sessions();
     app.state::<VaultState>().lock(reason);
+    app.state::<SessionManager>().close_all_sessions();
 }
 
 /// État du coffre : absent, verrouillé ou déverrouillé.
@@ -75,8 +79,13 @@ pub fn vault_watch(
 
 /// Change le délai de verrouillage automatique (valeurs proposées uniquement).
 #[tauri::command]
-pub fn vault_set_auto_lock(minutes: u32, state: State<'_, VaultState>) -> Result<(), AppError> {
-    state.update(|data| data.set_auto_lock(minutes))?;
+pub async fn vault_set_auto_lock(
+    minutes: u32,
+    state: State<'_, VaultState>,
+) -> Result<(), AppError> {
+    state
+        .update_blocking(move |data| data.set_auto_lock(minutes))
+        .await?;
     state.touch();
     Ok(())
 }

@@ -142,6 +142,7 @@ impl From<&VaultData> for SnapshotDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct KnownHostDto {
+    line: usize,
     hosts: String,
     algorithm: String,
     fingerprint: String,
@@ -151,6 +152,7 @@ pub struct KnownHostDto {
 impl From<KnownHostEntry> for KnownHostDto {
     fn from(entry: KnownHostEntry) -> Self {
         Self {
+            line: entry.line,
             hosts: entry.hosts,
             algorithm: entry.key.algorithm,
             fingerprint: entry.key.fingerprint,
@@ -162,6 +164,7 @@ impl From<KnownHostEntry> for KnownHostDto {
 impl From<KnownHostDto> for KnownHostEntry {
     fn from(dto: KnownHostDto) -> Self {
         Self {
+            line: dto.line,
             hosts: dto.hosts,
             key: KeyInfo {
                 algorithm: dto.algorithm,
@@ -247,7 +250,10 @@ pub fn vault_snapshot(state: State<'_, VaultState>) -> Result<SnapshotDto, AppEr
 /// Crée ou modifie un hôte. L'adresse, le port et l'utilisateur sont validés avec les mêmes
 /// règles que la connexion SSH.
 #[tauri::command]
-pub fn host_save(request: HostRequest, state: State<'_, VaultState>) -> Result<EntryId, AppError> {
+pub async fn host_save(
+    request: HostRequest,
+    state: State<'_, VaultState>,
+) -> Result<EntryId, AppError> {
     let probe_user = if request.username.is_empty() {
         "user"
     } else {
@@ -265,33 +271,41 @@ pub fn host_save(request: HostRequest, state: State<'_, VaultState>) -> Result<E
         tags: request.tags,
         notes: request.notes,
     };
-    state.update(|data| data.upsert_host(input))
+    state
+        .update_blocking(move |data| data.upsert_host(input))
+        .await
 }
 
 /// Supprime un hôte.
 #[tauri::command]
-pub fn host_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
-    state.update(|data| data.delete_host(id))
+pub async fn host_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
+    state
+        .update_blocking(move |data| data.delete_host(id))
+        .await
 }
 
 /// Crée ou renomme un groupe.
 #[tauri::command]
-pub fn group_save(
+pub async fn group_save(
     request: GroupRequest,
     state: State<'_, VaultState>,
 ) -> Result<EntryId, AppError> {
-    state.update(|data| data.upsert_group(request.id, &request.name))
+    state
+        .update_blocking(move |data| data.upsert_group(request.id, &request.name))
+        .await
 }
 
 /// Supprime un groupe (ses hôtes passent « sans groupe »).
 #[tauri::command]
-pub fn group_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
-    state.update(|data| data.delete_group(id))
+pub async fn group_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
+    state
+        .update_blocking(move |data| data.delete_group(id))
+        .await
 }
 
 /// Crée ou modifie une identité.
 #[tauri::command]
-pub fn identity_save(
+pub async fn identity_save(
     request: IdentityRequest,
     state: State<'_, VaultState>,
 ) -> Result<EntryId, AppError> {
@@ -307,13 +321,17 @@ pub fn identity_save(
         password,
         key_id: request.key_id,
     };
-    state.update(|data| data.upsert_identity(input))
+    state
+        .update_blocking(move |data| data.upsert_identity(input))
+        .await
 }
 
 /// Supprime une identité (refusé si un hôte l'utilise).
 #[tauri::command]
-pub fn identity_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
-    state.update(|data| data.delete_identity(id))
+pub async fn identity_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
+    state
+        .update_blocking(move |data| data.delete_identity(id))
+        .await
 }
 
 /// Importe dans le coffre une clé privée choisie par la boîte de dialogue du système (le
@@ -342,20 +360,26 @@ pub async fn key_import(
         public_key: imported.public_key,
         private_key: imported.private_key,
     };
-    let id = state.update(|data| data.add_key(key))?;
+    let id = state.update_blocking(move |data| data.add_key(key)).await?;
     state.read(|vault| Ok(KeyDto::from(vault.data().key(id)?)))
 }
 
 /// Renomme une clé.
 #[tauri::command]
-pub fn key_rename(id: EntryId, name: String, state: State<'_, VaultState>) -> Result<(), AppError> {
-    state.update(|data| data.rename_key(id, &name))
+pub async fn key_rename(
+    id: EntryId,
+    name: String,
+    state: State<'_, VaultState>,
+) -> Result<(), AppError> {
+    state
+        .update_blocking(move |data| data.rename_key(id, &name))
+        .await
 }
 
 /// Supprime une clé (refusé si une identité l'utilise).
 #[tauri::command]
-pub fn key_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
-    state.update(|data| data.delete_key(id))
+pub async fn key_delete(id: EntryId, state: State<'_, VaultState>) -> Result<(), AppError> {
+    state.update_blocking(move |data| data.delete_key(id)).await
 }
 
 /// Clés d'hôte connues (HKY-04).
@@ -456,6 +480,7 @@ mod tests {
     #[test]
     fn known_host_dto_round_trips() {
         let entry = KnownHostEntry {
+            line: 3,
             hosts: "[srv]:2222".into(),
             key: KeyInfo {
                 algorithm: "ssh-ed25519".into(),

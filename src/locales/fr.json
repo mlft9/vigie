@@ -252,7 +252,8 @@
       "identity_in_use": "Cette identité est utilisée par un hôte : changez d'abord l'identité de l'hôte.",
       "known_hosts_too_large": "Trop de clés d'hôte enregistrées.",
       "password_mismatch": "Les deux mots de passe ne sont pas identiques.",
-      "current_password_required": "Saisissez le mot de passe actuel."
+      "current_password_required": "Saisissez le mot de passe actuel.",
+      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez."
     },
     "book": {
       "no_identity": "Cet hôte n'a pas d'identité enregistrée."

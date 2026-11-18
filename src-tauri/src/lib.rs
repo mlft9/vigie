@@ -10,7 +10,7 @@ mod state;
 mod vault_state;
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use core_ssh::KnownHosts;
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
@@ -19,7 +19,7 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use crate::commands::vault::lock_everything;
 use crate::settings::SettingsStore;
 use crate::state::SessionManager;
-use crate::vault_state::{LockReason, VaultState};
+use crate::vault_state::{Activity, LockReason, VaultState};
 
 /// Nom de l'application côté Rust (ADR-014). Seule autre source : `productName` dans
 /// `tauri.conf.json` et la clé i18n `app.name`.
@@ -42,7 +42,7 @@ fn spawn_auto_lock(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(AUTO_LOCK_TICK).await;
-            if app.state::<VaultState>().idle_lock_due(Instant::now()) {
+            if app.state::<VaultState>().idle_lock_due(Activity::now()) {
                 lock_everything(&app, LockReason::Idle);
             }
         }

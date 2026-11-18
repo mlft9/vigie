@@ -137,11 +137,12 @@ pub fn import_private_key(
 
 /// Ré-encode une clé déjà déchiffrée pour le coffre.
 pub fn prepare_import(key: &PrivateKey) -> Result<ImportedKey, SshError> {
-    let mut encoded = key
+    let encoded = key
         .to_openssh(keys::ssh_key::LineEnding::LF)
         .map_err(|_| SshError::KeyInvalid)?;
-    // Le texte est déplacé (pas copié) du tampon `Zeroizing` vers le `SecretString`.
-    let private_key = SecretString::from(std::mem::take(&mut *encoded));
+    // Copie de taille exacte (aucune réallocation dans `SecretString`) ; le tampon d'origine,
+    // un `Zeroizing<String>`, est effacé à sa destruction.
+    let private_key = SecretString::from(String::from(encoded.as_str()));
     let public = key.public_key();
     let openssh = public.to_openssh().map_err(|_| SshError::KeyInvalid)?;
     // Sans le commentaire : il pourrait contenir un nom d'utilisateur ou de machine.

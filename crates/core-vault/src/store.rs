@@ -109,6 +109,11 @@ impl Vault {
         if file_status(&path) == VaultFileStatus::Present {
             return Err(VaultError::AlreadyExists);
         }
+        // Coffre absent mais copie de sauvegarde présente : créer un coffre neuf écraserait
+        // bientôt cette copie, peut-être la seule restante. L'utilisateur doit la restaurer.
+        if backup_path(&path).exists() {
+            return Err(VaultError::BackupOnly);
+        }
         let keys = fresh_keys(password)?;
         let vault = Self::from_keys(path, keys, data);
         vault.write(WriteMode::CreateNew)?;
@@ -203,8 +208,19 @@ impl Vault {
         let keys = fresh_keys(new)?;
         let candidate = Self::from_keys(self.path.clone(), keys, self.data.clone());
         candidate.write(WriteMode::Replace)?;
+        // La copie de sauvegarde contient encore l'ancienne version, chiffrée avec l'ancien sel et
+        // l'ancienne DEK : elle s'ouvrirait avec l'ancien mot de passe. On la remplace par une
+        // copie du nouveau fichier.
+        candidate.write_backup_of_current()?;
         *self = candidate;
         tracing::info!("mot de passe maître changé");
+        Ok(())
+    }
+
+    fn write_backup_of_current(&self) -> Result<(), VaultError> {
+        let dir = parent_dir(&self.path);
+        backup(&self.path, dir)?;
+        sync_dir(dir);
         Ok(())
     }
 
@@ -267,11 +283,14 @@ fn io_error(error: &io::Error) -> VaultError {
 }
 
 /// Écriture atomique : fichier temporaire (0600) dans le même dossier, `fsync`, renommage.
-fn write_file(path: &Path, bytes: &[u8], mode: WriteMode) -> Result<(), VaultError> {
-    let dir = path
-        .parent()
+fn parent_dir(path: &Path) -> &Path {
+    path.parent()
         .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
+        .unwrap_or_else(|| Path::new("."))
+}
+
+fn write_file(path: &Path, bytes: &[u8], mode: WriteMode) -> Result<(), VaultError> {
+    let dir = parent_dir(path);
     create_private_dir(dir).map_err(|e| io_error(&e))?;
     if mode == WriteMode::Replace {
         backup(path, dir)?;
@@ -316,15 +335,24 @@ fn backup(path: &Path, dir: &Path) -> Result<(), VaultError> {
     Ok(())
 }
 
-/// Crée le dossier avec des droits restrictifs (0700 sous Linux) s'il n'existe pas.
+/// Crée le dossier avec des droits restrictifs (0700 sous Linux). Un dossier déjà présent
+/// (créé par exemple par la WebView en 0755) est ramené à 0700 : c'est le dossier de données de
+/// l'application, personne d'autre n'a à y lire.
 fn create_private_dir(dir: &Path) -> io::Result<()> {
     let mut builder = fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::DirBuilderExt;
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
         builder.mode(0o700);
+        builder.create(dir)?;
+        let current = fs::metadata(dir)?.permissions().mode() & 0o777;
+        if current != 0o700 {
+            fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(())
     }
+    #[cfg(not(unix))]
     builder.create(dir)
 }
 
@@ -421,6 +449,20 @@ mod tests {
             Some(VaultError::PasswordTooShort)
         );
         assert_eq!(file_status(&other), VaultFileStatus::Missing);
+    }
+
+    #[test]
+    fn creation_refuses_to_bury_an_orphan_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, vault) = create(dir.path());
+        vault.save().unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!(
+            Vault::create(&path, &secret(PASSWORD), VaultData::default()).err(),
+            Some(VaultError::BackupOnly)
+        );
+        // La copie reste intacte et restaurable.
+        assert!(Vault::unlock(backup_path(&path), &secret(PASSWORD)).is_ok());
     }
 
     #[test]
@@ -579,9 +621,12 @@ mod tests {
         );
         let reopened = Vault::unlock(&path, &secret(OTHER)).unwrap();
         assert_eq!(reopened.data().hosts().len(), 1);
-        // La nouvelle DEK diffère : l'ancienne copie (.bak) ne s'ouvre qu'avec l'ancien mot de passe.
-        assert!(Vault::unlock(backup_path(&path), &secret(PASSWORD)).is_ok());
-        assert!(Vault::unlock(backup_path(&path), &secret(OTHER)).is_err());
+        // La copie de sauvegarde est rechiffrée aussi : l'ancien mot de passe n'ouvre plus rien.
+        assert_eq!(
+            Vault::unlock(backup_path(&path), &secret(PASSWORD)).err(),
+            Some(VaultError::WrongPasswordOrCorrupted)
+        );
+        assert!(Vault::unlock(backup_path(&path), &secret(OTHER)).is_ok());
     }
 
     #[test]
@@ -591,6 +636,19 @@ mod tests {
         let shown = format!("{vault:?}");
         assert!(!shown.contains("mot-de-passe-ssh"));
         assert!(!shown.contains("serveur-secret"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_directory_is_made_private_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("donnees");
+        fs::create_dir(&data).unwrap();
+        fs::set_permissions(&data, fs::Permissions::from_mode(0o755)).unwrap();
+        create(&data);
+        let mode = fs::metadata(&data).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
     }
 
     #[cfg(unix)]

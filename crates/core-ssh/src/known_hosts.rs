@@ -143,6 +143,9 @@ impl KnownHostsStorage for FileStorage {
 /// Clé d'hôte enregistrée, pour l'affichage et la suppression (HKY-04).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnownHostEntry {
+    /// Position de la ligne dans le contenu (0 = première ligne) : c'est elle qui désigne
+    /// l'entrée à supprimer, pas la forme nettoyée pour l'affichage.
+    pub line: usize,
     /// Liste d'hôtes de la ligne (`srv`, `[srv]:2222`…), nettoyée pour l'affichage.
     pub hosts: String,
     /// Algorithme et empreinte (vide si la clé est illisible).
@@ -232,23 +235,24 @@ impl KnownHosts {
         let content = self.storage.load()?;
         Ok(content
             .lines()
-            .filter_map(parse_line)
-            .filter_map(|entry| to_entry(&entry))
+            .enumerate()
+            .filter_map(|(index, line)| to_entry(index, &parse_line(line)?))
             .collect())
     }
 
-    /// Supprime toutes les lignes qui correspondent exactement à `entry` (telle que renvoyée
-    /// par [`KnownHosts::entries`]). Renvoie le nombre de lignes retirées. C'est le seul moyen
-    /// de débloquer un hôte dont la clé a changé (HKY-02, HKY-04).
+    /// Supprime la ligne désignée par `entry` (telle que renvoyée par [`KnownHosts::entries`]),
+    /// à condition qu'elle n'ait pas changé entre-temps. Renvoie le nombre de lignes retirées
+    /// (0 ou 1). C'est le seul moyen de débloquer un hôte dont la clé a changé (HKY-02, HKY-04).
     pub fn remove(&self, entry: &KnownHostEntry) -> Result<usize, SshError> {
         let _guard = self.write_lock.lock().map_err(|_| SshError::KnownHostsIo)?;
         let content = self.storage.load()?;
         let mut removed = 0;
         let mut kept = String::with_capacity(content.len());
-        for line in content.lines() {
-            let matches = parse_line(line)
-                .and_then(|parsed| to_entry(&parsed))
-                .is_some_and(|candidate| &candidate == entry);
+        for (index, line) in content.lines().enumerate() {
+            let matches = index == entry.line
+                && parse_line(line)
+                    .and_then(|parsed| to_entry(index, &parsed))
+                    .is_some_and(|candidate| &candidate == entry);
             if matches {
                 removed += 1;
             } else {
@@ -266,13 +270,14 @@ impl KnownHosts {
 
 /// Ligne affichable : lignes ordinaires et `@revoked` ; `@cert-authority` et marqueurs inconnus
 /// sont ignorés (comme pour la vérification).
-fn to_entry(entry: &Entry<'_>) -> Option<KnownHostEntry> {
+fn to_entry(line: usize, entry: &Entry<'_>) -> Option<KnownHostEntry> {
     let revoked = match entry.marker {
         None => false,
         Some("@revoked") => true,
         Some(_) => return None,
     };
     Some(KnownHostEntry {
+        line,
         hosts: display_text(entry.hosts, MAX_HOSTS_DISPLAY_LEN),
         key: known_info(entry),
         revoked,
@@ -698,6 +703,21 @@ mod tests {
         assert_eq!(written, format!("# garde-moi\n{}", line("autre", ED25519)));
         // Supprimer une entrée absente ne change rien.
         assert_eq!(kh.remove(&entry).unwrap(), 0);
+    }
+
+    #[test]
+    fn removal_targets_one_exact_line_not_its_displayed_form() {
+        // Deux lignes affichées de la même façon (caractère non ASCII retiré à l'affichage).
+        let content = line("srvé.lab", ED25519) + &line("srv.lab", ED25519);
+        let (_dir, kh) = store(&content);
+        let entries = kh.entries().unwrap();
+        assert_eq!(entries[0].hosts, entries[1].hosts);
+        assert_eq!(kh.remove(&entries[1]).unwrap(), 1);
+        let left = kh.entries().unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].line, 0);
+        // Une entrée périmée (contenu modifié entre-temps) ne supprime rien.
+        assert_eq!(kh.remove(&entries[1]).unwrap(), 0);
     }
 
     #[test]

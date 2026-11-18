@@ -143,6 +143,8 @@ export interface KeyImportRequest {
 
 /** Clé d'hôte connue (HKY-04). */
 export interface KnownHostEntry {
+  /** Position de la ligne : désigne l'entrée à supprimer. */
+  line: number;
   hosts: string;
   algorithm: string;
   fingerprint: string;

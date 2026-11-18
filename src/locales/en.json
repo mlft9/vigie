@@ -252,7 +252,8 @@
       "identity_in_use": "This identity is used by a host: change the host's identity first.",
       "known_hosts_too_large": "Too many host keys stored.",
       "password_mismatch": "The two passwords do not match.",
-      "current_password_required": "Enter the current password."
+      "current_password_required": "Enter the current password.",
+      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart."
     },
     "book": {
       "no_identity": "This host has no saved identity."

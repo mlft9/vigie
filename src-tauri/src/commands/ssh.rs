@@ -192,7 +192,15 @@ pub async fn ssh_connect(
         }
     };
 
-    spawn_session(target, credentials, size, on_event, on_output, &state)
+    spawn_session(
+        target,
+        credentials,
+        size,
+        on_event,
+        on_output,
+        &state,
+        &vault,
+    )
 }
 
 /// Démarre une session et la relie aux deux `Channel` de l'interface.
@@ -203,6 +211,7 @@ fn spawn_session(
     on_event: Channel<SessionEventDto>,
     on_output: Channel<InvokeResponseBody>,
     state: &SessionManager,
+    vault: &VaultState,
 ) -> Result<SessionId, AppError> {
     let host_pattern = core_ssh::known_hosts::host_pattern(target.host(), target.port());
     let params = ConnectParams {
@@ -221,6 +230,13 @@ fn spawn_session(
         };
         SessionHandle::spawn(params, Arc::new(sink))
     })?;
+    // Un verrouillage a pu survenir pendant la préparation (lecture de la clé, du coffre) :
+    // le coffre est verrouillé avant la fermeture des sessions, donc une session enregistrée
+    // après cette fermeture le voit ici et est fermée aussitôt (ADR-026).
+    if !vault.is_unlocked() {
+        let _ = state.close_session(id);
+        return Err(AppError::VAULT_LOCKED);
+    }
     tracing::debug!(session = id, "session SSH créée");
     Ok(id)
 }
@@ -272,7 +288,15 @@ pub fn ssh_connect_host(
     let (target, credentials) =
         vault.read(|vault| host_credentials(vault.data(), request.host_id))?;
     vault.touch();
-    spawn_session(target, credentials, size, on_event, on_output, &state)
+    spawn_session(
+        target,
+        credentials,
+        size,
+        on_event,
+        on_output,
+        &state,
+        &vault,
+    )
 }
 
 /// Envoie la saisie de l'utilisateur. `binary` signale des octets bruts (chaque caractère

@@ -167,9 +167,15 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     builder.recursive(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::DirBuilderExt;
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
         builder.mode(0o700);
+        builder.create(dir)?;
+        // Dossier de données de l'application : ramené à 0700 s'il existait déjà.
+        if fs::metadata(dir)?.permissions().mode() & 0o777 != 0o700 {
+            fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+        }
     }
+    #[cfg(not(unix))]
     builder.create(dir)?;
     let mut temp = tempfile::NamedTempFile::new_in(dir)?;
     temp.write_all(bytes)?;
