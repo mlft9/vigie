@@ -6057,7 +6057,10 @@ name = "younji"
 version = "0.1.0"
 dependencies = [
  "core-ssh",
+ "core-vault",
  "open",
+ "rand",
+ "russh",
  "secrecy",
  "serde",
  "serde_json",

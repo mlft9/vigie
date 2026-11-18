@@ -199,6 +199,40 @@
       "missing_fields": "Enter the host and the user.",
       "missing_password": "Enter the password.",
       "missing_key": "Choose a private key file."
+    },
+    "vault": {
+      "not_found": "No vault exists yet: create one.",
+      "already_exists": "A vault already exists: it will not be overwritten.",
+      "locked": "The vault is locked. Unlock it to continue.",
+      "wrong_password_or_corrupted": "Wrong password or damaged vault.",
+      "invalid_file": "The vault file is unreadable or damaged.",
+      "unsupported_version": "This vault was created by a newer version of Younji.",
+      "kdf_params_rejected": "This vault's encryption parameters are refused (file tampered with?).",
+      "io": "The vault file could not be read or written. Check disk space and permissions.",
+      "random_unavailable": "The system random number generator is unavailable.",
+      "password_too_short": "The master password must be at least 12 characters long.",
+      "password_too_weak": "This master password is too easy to guess. Make it longer, for example with several unrelated words.",
+      "invalid_name": "Invalid name: 1 to 128 characters, no control characters.",
+      "invalid_address": "Invalid address.",
+      "invalid_port": "The port must be between 1 and 65535.",
+      "invalid_username": "Invalid user name (required when no identity is selected).",
+      "invalid_tags": "Invalid tags: at most 16, 32 characters each.",
+      "invalid_notes": "Invalid notes: at most 4096 characters.",
+      "invalid_secret": "The password is empty or too long.",
+      "identity_incomplete": "An identity needs a password, a key, or both.",
+      "invalid_auto_lock": "Lock delay not offered.",
+      "too_many_entries": "Maximum number of entries reached.",
+      "entry_not_found": "This item no longer exists.",
+      "key_in_use": "This key is used by an identity: remove it from the identity first.",
+      "identity_in_use": "This identity is used by a host: change the host's identity first.",
+      "known_hosts_too_large": "Too many host keys stored."
+    },
+    "book": {
+      "no_identity": "This host has no saved identity."
+    },
+    "settings": {
+      "invalid": "Invalid setting.",
+      "io": "Settings could not be saved."
     }
   }
 }

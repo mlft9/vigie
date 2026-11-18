@@ -199,6 +199,40 @@
       "missing_fields": "Renseignez l'hôte et l'utilisateur.",
       "missing_password": "Saisissez le mot de passe.",
       "missing_key": "Choisissez un fichier de clé privée."
+    },
+    "vault": {
+      "not_found": "Aucun coffre n'existe encore : créez-le.",
+      "already_exists": "Un coffre existe déjà : il ne sera pas écrasé.",
+      "locked": "Le coffre est verrouillé. Déverrouillez-le pour continuer.",
+      "wrong_password_or_corrupted": "Mot de passe incorrect ou coffre endommagé.",
+      "invalid_file": "Le fichier du coffre est illisible ou endommagé.",
+      "unsupported_version": "Ce coffre a été créé par une version plus récente de Younji.",
+      "kdf_params_rejected": "Les paramètres de chiffrement de ce coffre sont refusés (fichier modifié ?).",
+      "io": "Le fichier du coffre n'a pas pu être lu ou écrit. Vérifiez l'espace disque et les droits.",
+      "random_unavailable": "Le générateur aléatoire du système est indisponible.",
+      "password_too_short": "Le mot de passe maître doit contenir au moins 12 caractères.",
+      "password_too_weak": "Ce mot de passe maître est trop facile à deviner. Allongez-le, par exemple avec plusieurs mots sans lien entre eux.",
+      "invalid_name": "Nom invalide : 1 à 128 caractères, sans caractère de contrôle.",
+      "invalid_address": "Adresse invalide.",
+      "invalid_port": "Le port doit être compris entre 1 et 65535.",
+      "invalid_username": "Nom d'utilisateur invalide (obligatoire si aucune identité n'est choisie).",
+      "invalid_tags": "Étiquettes invalides : 16 au plus, 32 caractères chacune.",
+      "invalid_notes": "Notes invalides : 4096 caractères au plus.",
+      "invalid_secret": "Le mot de passe est vide ou trop long.",
+      "identity_incomplete": "Une identité doit avoir un mot de passe, une clé, ou les deux.",
+      "invalid_auto_lock": "Délai de verrouillage non proposé.",
+      "too_many_entries": "Nombre maximal d'entrées atteint.",
+      "entry_not_found": "Cet élément n'existe plus.",
+      "key_in_use": "Cette clé est utilisée par une identité : retirez-la d'abord de l'identité.",
+      "identity_in_use": "Cette identité est utilisée par un hôte : changez d'abord l'identité de l'hôte.",
+      "known_hosts_too_large": "Trop de clés d'hôte enregistrées."
+    },
+    "book": {
+      "no_identity": "Cet hôte n'a pas d'identité enregistrée."
+    },
+    "settings": {
+      "invalid": "Paramètre invalide.",
+      "io": "Les paramètres n'ont pas pu être enregistrés."
     }
   }
 }

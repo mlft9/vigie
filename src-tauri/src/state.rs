@@ -34,13 +34,13 @@ pub struct SessionManager {
 }
 
 impl SessionManager {
-    /// Crée le gestionnaire avec le fichier `known_hosts` de l'application.
-    pub fn new(known_hosts_path: PathBuf) -> Self {
+    /// Crée le gestionnaire avec les clés d'hôte connues de l'application (dans le coffre).
+    pub fn new(known_hosts: Arc<KnownHosts>) -> Self {
         Self {
             sessions: Arc::default(),
             key_files: Mutex::default(),
             next_id: AtomicU64::new(1),
-            known_hosts: Arc::new(KnownHosts::new(known_hosts_path)),
+            known_hosts,
         }
     }
 
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn key_files_are_only_reachable_by_their_id() {
-        let manager = SessionManager::new(PathBuf::from("known_hosts"));
+        let manager = SessionManager::new(Arc::new(KnownHosts::new("known_hosts")));
         let id = manager.remember_key_file(PathBuf::from("/cle")).unwrap();
         assert_eq!(manager.key_file(id).unwrap(), PathBuf::from("/cle"));
         assert_eq!(manager.key_file(id + 1000), Err(AppError::KEY_FILE_UNKNOWN));
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn oldest_key_files_are_forgotten() {
-        let manager = SessionManager::new(PathBuf::from("known_hosts"));
+        let manager = SessionManager::new(Arc::new(KnownHosts::new("known_hosts")));
         let first = manager.remember_key_file(PathBuf::from("/0")).unwrap();
         for i in 1..=MAX_KEY_FILES {
             manager
@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn unknown_sessions_are_reported() {
-        let manager = SessionManager::new(PathBuf::from("known_hosts"));
+        let manager = SessionManager::new(Arc::new(KnownHosts::new("known_hosts")));
         assert_eq!(
             manager.session(42).unwrap_err(),
             AppError::SESSION_NOT_FOUND

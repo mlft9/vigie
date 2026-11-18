@@ -25,13 +25,17 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
 tracing-appender = "0.2.5"
 core-ssh = { version = "0.1.0", path = "../crates/core-ssh" }
+core-vault = { version = "0.1.0", path = "../crates/core-vault" }
 tauri-plugin-dialog = "2.8.4"
 secrecy = { version = "0.10.3", features = ["serde"] }
-tokio = { version = "1.54", features = ["sync"] }
+tokio = { version = "1.54", features = ["sync", "time"] }
+tempfile = "3"
 open = "5.4.5"
 
 [dev-dependencies]
-tempfile = "3"
+rand = "0.10"
+russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa"] }
+tokio = { version = "1.54", features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

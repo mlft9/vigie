@@ -5,6 +5,7 @@
 //! journaux, sans secret (SECURITE.md §6).
 
 use core_ssh::SshError;
+use core_vault::VaultError;
 use serde::Serialize;
 
 /// Erreur sérialisable à destination de l'interface.
@@ -31,6 +32,14 @@ impl AppError {
     pub const URL_OPEN_FAILED: Self = Self::new("url.open_failed");
     /// Erreur interne inattendue.
     pub const INTERNAL: Self = Self::new("internal");
+    /// Coffre verrouillé (même code que `VaultError::Locked`).
+    pub const VAULT_LOCKED: Self = Self::new("vault.locked");
+    /// Hôte sans identité : la connexion directe depuis le carnet est impossible.
+    pub const HOST_WITHOUT_IDENTITY: Self = Self::new("book.no_identity");
+    /// Paramètres hors des valeurs admises.
+    pub const SETTINGS_INVALID: Self = Self::new("settings.invalid");
+    /// `settings.json` ne peut pas être écrit.
+    pub const SETTINGS_IO: Self = Self::new("settings.io");
 
     /// Codes propres à `src-tauri` (hors `SshError`), pour le test des traductions.
     #[cfg(test)]
@@ -43,6 +52,10 @@ impl AppError {
         Self::URL_INVALID,
         Self::URL_OPEN_FAILED,
         Self::INTERNAL,
+        Self::VAULT_LOCKED,
+        Self::HOST_WITHOUT_IDENTITY,
+        Self::SETTINGS_INVALID,
+        Self::SETTINGS_IO,
     ];
 
     /// Crée une erreur à partir d'un code. Le code doit exister dans `src/locales/*.json`.
@@ -59,6 +72,12 @@ impl AppError {
 
 impl From<SshError> for AppError {
     fn from(error: SshError) -> Self {
+        Self::new(error.code())
+    }
+}
+
+impl From<VaultError> for AppError {
+    fn from(error: VaultError) -> Self {
         Self::new(error.code())
     }
 }
@@ -89,6 +108,7 @@ mod tests {
         let codes: Vec<&str> = SshError::ALL
             .iter()
             .map(|e| e.code())
+            .chain(VaultError::ALL.iter().map(|e| e.code()))
             .chain(AppError::OWN_CODES.iter().map(AppError::code))
             .collect();
         for locale in ["fr", "en"] {
