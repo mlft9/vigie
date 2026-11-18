@@ -238,13 +238,21 @@ impl VaultState {
     }
 
     /// Change le mot de passe maître (deux dérivations Argon2id, hors de l'exécuteur async).
+    /// La vérification du mot de passe actuel partage le compteur d'échecs et le délai du
+    /// déverrouillage : sinon, une interface compromise pourrait s'en servir pour deviner le
+    /// mot de passe maître sans ralentissement.
     pub async fn change_password(
         &self,
         current: SecretString,
         new: SecretString,
     ) -> Result<(), AppError> {
+        let mut failures = self.attempts.lock().await;
+        let delay = unlock_delay(*failures);
+        if !delay.is_zero() {
+            tokio::time::sleep(delay).await;
+        }
         let shared = self.shared.clone();
-        tauri::async_runtime::spawn_blocking(move || {
+        let result = tauri::async_runtime::spawn_blocking(move || {
             let mut guard = shared.lock()?;
             let vault = guard.as_mut().ok_or(AppError::VAULT_LOCKED)?;
             vault
@@ -252,7 +260,19 @@ impl VaultState {
                 .map_err(AppError::from)
         })
         .await
-        .map_err(|_| AppError::INTERNAL)?
+        .map_err(|_| AppError::INTERNAL)?;
+        match result {
+            Err(error) if error == AppError::from(VaultError::WrongPasswordOrCorrupted) => {
+                *failures = failures.saturating_add(1);
+                tracing::info!(failures = *failures, "mot de passe actuel refusé");
+                Err(error)
+            }
+            Ok(()) => {
+                *failures = 0;
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// Note une activité de l'utilisateur (remet le minuteur à zéro).
@@ -403,5 +423,22 @@ mod tests {
         // Juste après une activité, pas de verrouillage automatique.
         assert!(!state.idle_lock_due(Instant::now()));
         assert!(state.idle_lock_due(Instant::now() + Duration::from_secs(15 * 60)));
+
+        // Un mauvais mot de passe actuel compte comme un échec de déverrouillage.
+        let wrong = AppError::from(VaultError::WrongPasswordOrCorrupted);
+        let new = || SecretString::from("Tq9#mZ2!vLp8@xR-nouveau");
+        assert_eq!(
+            state
+                .change_password(SecretString::from("mauvais"), new())
+                .await
+                .unwrap_err(),
+            wrong
+        );
+        assert_eq!(*state.attempts.lock().await, 1);
+        state
+            .change_password(SecretString::from(password), new())
+            .await
+            .unwrap();
+        assert_eq!(*state.attempts.lock().await, 0);
     }
 }
