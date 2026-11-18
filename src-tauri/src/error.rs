@@ -40,6 +40,8 @@ impl AppError {
     pub const SETTINGS_INVALID: Self = Self::new("settings.invalid");
     /// `settings.json` ne peut pas être écrit.
     pub const SETTINGS_IO: Self = Self::new("settings.io");
+    /// Écriture du fichier exporté impossible.
+    pub const EXPORT_FAILED: Self = Self::new("keys.export_failed");
 
     /// Codes propres à `src-tauri` (hors `SshError`), pour le test des traductions.
     #[cfg(test)]
@@ -56,6 +58,7 @@ impl AppError {
         Self::HOST_WITHOUT_IDENTITY,
         Self::SETTINGS_INVALID,
         Self::SETTINGS_IO,
+        Self::EXPORT_FAILED,
     ];
 
     /// Crée une erreur à partir d'un code. Le code doit exister dans `src/locales/*.json`.

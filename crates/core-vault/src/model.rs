@@ -273,8 +273,9 @@ fn has_control(text: &str) -> bool {
     text.chars().any(char::is_control)
 }
 
-/// Nom : 1 à 128 caractères, sans caractère de contrôle, espaces de bord retirés.
-fn clean_name(name: &str) -> Result<String, VaultError> {
+/// Nom : 1 à 128 caractères, sans caractère de contrôle, espaces de bord retirés. Publique pour
+/// valider un nom avant une opération coûteuse (génération de clé RSA).
+pub fn clean_name(name: &str) -> Result<String, VaultError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > MAX_NAME_LEN || has_control(name) {
         return Err(VaultError::InvalidName);

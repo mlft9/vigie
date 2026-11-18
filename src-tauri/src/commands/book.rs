@@ -1,19 +1,20 @@
-//! Commandes du carnet d'hôtes et des clés (HST-01 à HST-03, KEY-02, HKY-04).
+//! Commandes du carnet d'hôtes et des clés (HST-01 à HST-03, KEY-01, KEY-02, HKY-04).
 //!
 //! Les structures renvoyées à l'interface ne contiennent **aucun secret** : une identité indique
 //! seulement qu'elle a un mot de passe (`hasPassword`), une clé ne montre que sa partie publique
-//! et son empreinte. Les secrets arrivent une fois (`identity_save`, `key_import`) et restent
-//! dans le coffre.
+//! et son empreinte. Les secrets arrivent une fois (`identity_save`, `key_import`) ou naissent
+//! dans le cœur (`key_generate`), et restent dans le coffre.
 
 use core_ssh::auth::import_private_key;
-use core_ssh::{KeyInfo, KnownHostEntry, Target};
+use core_ssh::{ImportedKey, KeyInfo, KeyKind, KnownHostEntry, Target};
 use core_vault::{
     EntryId, Group, Host, HostInput, Identity, IdentityInput, NewKey, PasswordChange, StoredKey,
     VaultData,
 };
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State, WebviewWindow};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::error::AppError;
 use crate::state::{KeyFileId, SessionManager};
@@ -231,6 +232,37 @@ pub struct KeyImportRequest {
     passphrase: Option<SecretString>,
 }
 
+/// Type de clé à générer (KEY-01).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyKindRequest {
+    Ed25519,
+    EcdsaP256,
+    EcdsaP384,
+    EcdsaP521,
+    Rsa4096,
+}
+
+impl From<KeyKindRequest> for KeyKind {
+    fn from(kind: KeyKindRequest) -> Self {
+        match kind {
+            KeyKindRequest::Ed25519 => Self::Ed25519,
+            KeyKindRequest::EcdsaP256 => Self::EcdsaP256,
+            KeyKindRequest::EcdsaP384 => Self::EcdsaP384,
+            KeyKindRequest::EcdsaP521 => Self::EcdsaP521,
+            KeyKindRequest::Rsa4096 => Self::Rsa4096,
+        }
+    }
+}
+
+/// Génération d'une clé dans le coffre.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KeyGenerateRequest {
+    name: String,
+    kind: KeyKindRequest,
+}
+
 /// Création ou renommage d'un groupe.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -353,8 +385,17 @@ pub async fn key_import(
     })
     .await
     .map_err(|_| AppError::INTERNAL)??;
+    store_key(request.name, imported, &state).await
+}
+
+/// Enregistre une clé (importée ou générée) dans le coffre et renvoie sa partie publique.
+async fn store_key(
+    name: String,
+    imported: ImportedKey,
+    state: &VaultState,
+) -> Result<KeyDto, AppError> {
     let key = NewKey {
-        name: request.name,
+        name,
         algorithm: imported.algorithm,
         fingerprint: imported.fingerprint,
         public_key: imported.public_key,
@@ -362,6 +403,85 @@ pub async fn key_import(
     };
     let id = state.update_blocking(move |data| data.add_key(key)).await?;
     state.read(|vault| Ok(KeyDto::from(vault.data().key(id)?)))
+}
+
+/// Génère une clé (KEY-01) directement dans le coffre : la partie privée naît dans le cœur et
+/// n'en sort jamais ; seule la partie publique est renvoyée.
+#[tauri::command]
+pub async fn key_generate(
+    request: KeyGenerateRequest,
+    state: State<'_, VaultState>,
+) -> Result<KeyDto, AppError> {
+    if !state.is_unlocked() {
+        return Err(AppError::VAULT_LOCKED);
+    }
+    // Nom vérifié avant la génération (RSA 4096 prend du temps) ; revérifié à l'enregistrement.
+    core_vault::model::clean_name(&request.name)?;
+    let kind = KeyKind::from(request.kind);
+    let generated = tauri::async_runtime::spawn_blocking(move || core_ssh::generate_key(kind))
+        .await
+        .map_err(|_| AppError::INTERNAL)??;
+    state.touch();
+    store_key(request.name, generated, &state).await
+}
+
+/// Nom de fichier proposé pour l'export d'une clé publique : caractères sûrs uniquement.
+fn public_key_file_name(name: &str) -> String {
+    let base: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect();
+    let base = base.trim_matches('_');
+    if base.is_empty() {
+        "younji_key.pub".to_owned()
+    } else {
+        format!("{base}.pub")
+    }
+}
+
+/// Exporte la clé publique dans un fichier `.pub` (KEY-02). Le chemin est choisi dans la boîte
+/// de dialogue du système, ouverte par le cœur, et ne remonte jamais à l'interface (ADR-020).
+/// Renvoie `false` si l'utilisateur annule.
+#[tauri::command]
+pub async fn key_export_public(
+    id: EntryId,
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, VaultState>,
+) -> Result<bool, AppError> {
+    let (name, public_key) = state.read(|vault| {
+        let key = vault.data().key(id)?;
+        Ok((key.name.clone(), key.public_key.clone()))
+    })?;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_parent(&window)
+        .set_file_name(public_key_file_name(&name))
+        .add_filter("OpenSSH (.pub)", &["pub"])
+        .save_file(move |picked| {
+            let _ = sender.send(picked);
+        });
+    let Some(picked) = receiver.await.map_err(|_| AppError::DIALOG_FAILED)? else {
+        return Ok(false);
+    };
+    let path = picked.into_path().map_err(|_| AppError::DIALOG_FAILED)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::write(&path, format!("{public_key}\n")).map_err(|error| {
+            tracing::debug!(%error, "écriture de la clé publique impossible");
+            AppError::EXPORT_FAILED
+        })
+    })
+    .await
+    .map_err(|_| AppError::INTERNAL)??;
+    Ok(true)
 }
 
 /// Renomme une clé.
@@ -475,6 +595,47 @@ mod tests {
         });
         let parsed = serde_json::from_value::<IdentityRequest>(keep).unwrap();
         assert!(matches!(parsed.password, PasswordRequest::Keep {}));
+    }
+
+    #[test]
+    fn key_generate_request_is_strict() {
+        let parsed: KeyGenerateRequest =
+            serde_json::from_value(serde_json::json!({ "name": "k", "kind": "ecdsaP384" }))
+                .unwrap();
+        assert_eq!(KeyKind::from(parsed.kind), KeyKind::EcdsaP384);
+        for kind in ["ed25519", "ecdsaP256", "ecdsaP521", "rsa4096"] {
+            assert!(
+                serde_json::from_value::<KeyGenerateRequest>(
+                    serde_json::json!({ "name": "k", "kind": kind })
+                )
+                .is_ok()
+            );
+        }
+        for kind in ["rsa1024", "dsa", "RSA4096", ""] {
+            assert!(
+                serde_json::from_value::<KeyGenerateRequest>(
+                    serde_json::json!({ "name": "k", "kind": kind })
+                )
+                .is_err(),
+                "{kind}"
+            );
+        }
+        assert!(
+            serde_json::from_value::<KeyGenerateRequest>(
+                serde_json::json!({ "name": "k", "kind": "ed25519", "passphrase": "x" })
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn exported_file_name_is_safe() {
+        assert_eq!(public_key_file_name("Ma clé lab"), "Ma_cl__lab.pub");
+        assert_eq!(public_key_file_name("../../etc/passwd"), "etc_passwd.pub");
+        assert_eq!(public_key_file_name("C:\\x"), "C__x.pub");
+        assert_eq!(public_key_file_name(""), "younji_key.pub");
+        assert_eq!(public_key_file_name("..."), "younji_key.pub");
+        assert!(public_key_file_name(&"a".repeat(500)).len() <= 68);
     }
 
     #[test]
