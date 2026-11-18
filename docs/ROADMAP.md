@@ -10,7 +10,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | 0 | Fondations | ✅ |
 | 1 | Terminal SSH multi-onglets | ✅ |
 | 2 | Coffre chiffré et carnet d'hôtes | ✅ |
-| 3 | 2FA et générateur de clés | 🟨 |
+| 3 | 2FA et générateur de clés | ✅ |
 | 4 | SFTP | ⬜ |
 | 5 | Split, snippets, diffusion multi-sessions | ⬜ |
 | 6 | Tunnels SSH | ⬜ |
@@ -113,9 +113,9 @@ Contenu :
 Contenu : keyboard-interactive (AUTH-03), générateur de clés (KEY-01), export de la clé publique, déploiement sur un hôte (KEY-03).
 
 **Critères d'acceptation**
-- [ ] Connexion à une VM configurée avec mot de passe + TOTP (PAM google-authenticator).
-- [ ] Générer une clé Ed25519, la déployer sur la VM, puis se connecter par clé. Un second déploiement ne duplique pas la ligne.
-- [ ] Les permissions de `~/.ssh` (700) et de `authorized_keys` (600) sont correctes après le déploiement.
+- [x] Connexion à une VM configurée avec mot de passe + TOTP (PAM google-authenticator).
+- [x] Générer une clé Ed25519, la déployer sur la VM, puis se connecter par clé. Un second déploiement ne duplique pas la ligne.
+- [x] Les permissions de `~/.ssh` (700) et de `authorized_keys` (600) sont correctes après le déploiement.
 
 ---
 
