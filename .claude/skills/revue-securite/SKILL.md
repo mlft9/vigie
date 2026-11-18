@@ -16,4 +16,5 @@ Cible demandée : $ARGUMENTS
    - « tout » : l'ensemble du dépôt, crate par crate.
 2. Délègue à l'agent `security-reviewer` en lui donnant le périmètre précis.
 3. Présente son rapport tel quel, puis ajoute pour chaque problème ton avis : d'accord / à discuter, avec l'effort de correction estimé.
-4. **Demande** quels problèmes corriger avant de modifier quoi que ce soit. Corrige ensuite chaque problème retenu dans un commit `fix(security): …` avec un test quand c'est possible.
+4. Sans attendre d'accord, corrige les problèmes **Critique**, **Élevée** et **Moyenne** (ceux avec lesquels tu es d'accord), chacun dans un commit `fix(security): …` avec un test quand c'est possible. Pour les **Faible** et les points « à discuter », corrige si l'effort est faible, sinon justifie dans le compte rendu.
+5. Lance `npm run check`, relance `security-reviewer` sur les correctifs, puis rends compte : problème → décision → commit.

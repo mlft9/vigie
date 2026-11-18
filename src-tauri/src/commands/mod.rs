@@ -3,5 +3,8 @@
 //! `build.rs`, accordée dans une capability et ajoutée à la liste blanche de l'isolation.
 
 pub mod app;
+pub mod book;
+pub mod settings;
 pub mod ssh;
 pub mod url;
+pub mod vault;

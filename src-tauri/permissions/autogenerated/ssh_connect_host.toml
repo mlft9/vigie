@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ssh-connect-host"
+description = "Enables the ssh_connect_host command without any pre-configured scope."
+commands.allow = ["ssh_connect_host"]
+
+[[permission]]
+identifier = "deny-ssh-connect-host"
+description = "Denies the ssh_connect_host command without any pre-configured scope."
+commands.deny = ["ssh_connect_host"]

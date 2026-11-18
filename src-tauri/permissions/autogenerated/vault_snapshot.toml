@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-vault-snapshot"
+description = "Enables the vault_snapshot command without any pre-configured scope."
+commands.allow = ["vault_snapshot"]
+
+[[permission]]
+identifier = "deny-vault-snapshot"
+description = "Denies the vault_snapshot command without any pre-configured scope."
+commands.deny = ["vault_snapshot"]

@@ -12,14 +12,22 @@ interface HostKeyChangedAlertProps {
   port: number;
   change: HostKeyChange;
   onClose: () => void;
+  /** Ouvre la gestion des clés d'hôte connues (HKY-04). */
+  onManage: () => void;
 }
 
 /**
  * Clé d'hôte modifiée (HKY-02) : la connexion est refusée et il n'existe **aucun** bouton
  * pour continuer. Le déblocage passe par la suppression volontaire de l'ancienne clé, après
- * vérification (gestion des clés d'hôte dans l'interface à l'étape 2, HKY-04).
+ * vérification, dans la gestion des clés d'hôte connues (HKY-04).
  */
-export function HostKeyChangedAlert({ host, port, change, onClose }: HostKeyChangedAlertProps) {
+export function HostKeyChangedAlert({
+  host,
+  port,
+  change,
+  onClose,
+  onManage,
+}: HostKeyChangedAlertProps) {
   const { t } = useTranslation();
   const id = useId();
   const address = port === 22 ? host : `${host}:${port}`;
@@ -49,11 +57,15 @@ export function HostKeyChangedAlert({ host, port, change, onClose }: HostKeyChan
         <p className="text-muted-foreground">
           {t('hostKey.changed.unblock', { host: change.hostPattern })}
         </p>
-        <p className="font-mono text-xs break-all select-all">{change.knownHostsPath}</p>
       </div>
-      <Button variant="outline" className="self-end" onClick={onClose}>
-        {t('hostKey.changed.close')}
-      </Button>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onManage}>
+          {t('hostKey.changed.manage')}
+        </Button>
+        <Button variant="outline" onClick={onClose}>
+          {t('hostKey.changed.close')}
+        </Button>
+      </div>
     </section>
   );
 }

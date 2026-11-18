@@ -17,18 +17,20 @@ import {
   sshAck,
   sshClose,
   sshConnect,
+  sshConnectHost,
   sshHostKeyDecision,
   sshResize,
   sshWrite,
   toAppError,
 } from '@/lib/ipc';
 import type { AuthRequest, SessionEvent, SessionId } from '@/lib/types';
-import { type ConnectTarget, useSessions } from '@/stores/sessions';
+import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
+import { useSettings } from '@/stores/settings';
 
 import { InputQueue } from './inputQueue';
 import { isOpenableUrl, isOpenGesture } from './links';
 import { analyzePaste, type PasteAnalysis } from './paste';
-import { TERMINAL_FONT_FAMILY, TERMINAL_FONT_SIZE, terminalTheme } from './terminalTheme';
+import { TERMINAL_FONT_FAMILY, terminalTheme } from './terminalTheme';
 
 /** Lignes conservées dans l'historique de défilement. */
 const SCROLLBACK = 10_000;
@@ -67,6 +69,7 @@ export class TerminalSession {
   private input: InputQueue | null = null;
   /** Octets affichés avant que l'identifiant de session ne soit connu. */
   private pendingAck = 0;
+  private readonly unsubscribeSettings: () => void;
 
   constructor(readonly tabId: string) {
     this.terminal = new Terminal({
@@ -74,7 +77,7 @@ export class TerminalSession {
       scrollback: SCROLLBACK,
       cursorBlink: true,
       fontFamily: TERMINAL_FONT_FAMILY,
-      fontSize: TERMINAL_FONT_SIZE,
+      fontSize: useSettings.getState().terminalFontSize,
       // Liens OSC 8 : le texte affiché peut différer de la cible, d'où une confirmation.
       linkHandler: {
         activate: (event, uri) => {
@@ -87,6 +90,13 @@ export class TerminalSession {
     });
     this.host = document.createElement('div');
     this.host.className = 'h-full w-full';
+    // Taille de police réglable dans les paramètres (APP-05), appliquée à chaud.
+    this.unsubscribeSettings = useSettings.subscribe((state, previous) => {
+      if (state.terminalFontSize !== previous.terminalFontSize) {
+        this.terminal.options.fontSize = state.terminalFontSize;
+        this.fitToContainer();
+      }
+    });
 
     this.terminal.loadAddon(this.fit);
     this.terminal.loadAddon(this.search);
@@ -197,6 +207,39 @@ export class TerminalSession {
 
   /** Ouvre une session SSH dans ce terminal (première connexion ou reconnexion). */
   async connect(target: ConnectTarget, secrets: ConnectSecrets): Promise<void> {
+    const auth: AuthRequest =
+      target.authKind === 'password'
+        ? { kind: 'password', password: secrets.password ?? '' }
+        : {
+            kind: 'key',
+            keyFileId: target.keyFile?.id ?? -1,
+            passphrase: secrets.passphrase ?? null,
+          };
+    await this.open(target, (size, listeners) =>
+      sshConnect(
+        { host: target.host, port: target.port, username: target.username, auth, ...size },
+        listeners,
+      ),
+    );
+  }
+
+  /**
+   * Ouvre une session vers un hôte du carnet : le cœur lit l'identité dans le coffre, aucun
+   * secret ne passe par l'interface (reconnexion comprise).
+   */
+  async connectHost(target: ConnectTarget & { hostId: string }): Promise<void> {
+    await this.open(target, (size, listeners) =>
+      sshConnectHost({ hostId: target.hostId, ...size }, listeners),
+    );
+  }
+
+  private async open(
+    target: ConnectTarget,
+    start: (
+      size: { cols: number; rows: number },
+      listeners: Parameters<typeof sshConnect>[1],
+    ) => Promise<SessionId>,
+  ): Promise<void> {
     if (this.disposed) return;
     this.closeRemote();
     const generation = ++this.generation;
@@ -209,32 +252,20 @@ export class TerminalSession {
       pendingHostKey: null,
       hostKeyChange: null,
     });
-
-    const auth: AuthRequest =
-      target.authKind === 'password'
-        ? { kind: 'password', password: secrets.password ?? '' }
-        : {
-            kind: 'key',
-            keyFileId: target.keyFile?.id ?? -1,
-            passphrase: secrets.passphrase ?? null,
-          };
     const size = this.opened
       ? { cols: this.terminal.cols, rows: this.terminal.rows }
       : DEFAULT_SIZE;
 
     let sessionId: SessionId;
     try {
-      sessionId = await sshConnect(
-        { host: target.host, port: target.port, username: target.username, auth, ...size },
-        {
-          onEvent: (event) => {
-            if (generation === this.generation) this.handleEvent(event);
-          },
-          onOutput: (data) => {
-            if (generation === this.generation) this.handleOutput(data);
-          },
+      sessionId = await start(size, {
+        onEvent: (event) => {
+          if (generation === this.generation) this.handleEvent(event);
         },
-      );
+        onOutput: (data) => {
+          if (generation === this.generation) this.handleOutput(data);
+        },
+      });
     } catch (error) {
       if (generation === this.generation) {
         this.update({ status: 'form', errorCode: toAppError(error).code });
@@ -279,7 +310,6 @@ export class TerminalSession {
           hostKeyChange: {
             key: event.key,
             known: event.known,
-            knownHostsPath: event.knownHostsPath,
             hostPattern: event.hostPattern,
           },
         });
@@ -394,6 +424,7 @@ export class TerminalSession {
     this.disposed = true;
     this.generation++;
     if (this.resizeTimer) clearTimeout(this.resizeTimer);
+    this.unsubscribeSettings();
     this.detach();
     this.terminal.dispose();
   }
@@ -423,4 +454,17 @@ export function closeTab(tabId: string): void {
   registry.get(tabId)?.dispose();
   registry.delete(tabId);
   useSessions.getState().removeTab(tabId);
+}
+
+/**
+ * Ferme tous les onglets de session et détruit leurs terminaux, tampon de défilement compris
+ * (verrouillage du coffre, ADR-026).
+ */
+export function closeAllTabs(): void {
+  for (const tab of useSessions.getState().tabs) closeTab(tab.id);
+  for (const [tabId, session] of registry) {
+    session.dispose();
+    registry.delete(tabId);
+  }
+  useSessions.getState().activate(HOME_TAB_ID);
 }

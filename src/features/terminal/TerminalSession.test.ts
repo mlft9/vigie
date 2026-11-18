@@ -2,8 +2,9 @@ import * as ipc from '@/lib/ipc';
 import type * as IpcModule from '@/lib/ipc';
 import type { SessionEvent } from '@/lib/types';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
+import { useSettings } from '@/stores/settings';
 
-import { TerminalSession } from './TerminalSession';
+import { closeAllTabs, terminalSession, TerminalSession } from './TerminalSession';
 
 /** Accès au double de xterm, dont les méthodes sont des fonctions simulées. */
 function fake(session: TerminalSession) {
@@ -71,6 +72,7 @@ vi.mock('@/lib/ipc', async (importOriginal) => {
   return {
     ...actual,
     sshConnect: vi.fn(),
+    sshConnectHost: vi.fn(),
     sshWrite: vi.fn().mockResolvedValue(undefined),
     sshResize: vi.fn().mockResolvedValue(undefined),
     sshAck: vi.fn().mockResolvedValue(undefined),
@@ -176,13 +178,12 @@ describe('TerminalSession', () => {
       type: 'hostKeyChanged',
       key: KEY,
       known: [KEY],
-      knownHostsPath: '/kh',
       hostPattern: 'srv.lab',
     });
     emit({ type: 'disconnected', code: 'ssh.host_key_changed' });
     expect(tab()).toMatchObject({
       status: 'blocked',
-      hostKeyChange: { key: KEY, known: [KEY], knownHostsPath: '/kh', hostPattern: 'srv.lab' },
+      hostKeyChange: { key: KEY, known: [KEY], hostPattern: 'srv.lab' },
     });
   });
 
@@ -234,5 +235,49 @@ describe('TerminalSession', () => {
     session.dispose();
     expect(ipc.sshClose).toHaveBeenCalledWith(9);
     expect(fake(session).dispose).toHaveBeenCalled();
+  });
+
+  it('se connecte à un hôte du carnet par son identifiant, sans aucun secret', async () => {
+    const tabId = useSessions.getState().openTab();
+    const session = new TerminalSession(tabId);
+    vi.mocked(ipc.sshConnectHost).mockResolvedValueOnce(9);
+    await session.connectHost({ ...TARGET, hostId: 'h-1', label: 'Web' });
+    expect(ipc.sshConnectHost).toHaveBeenCalledWith(
+      { hostId: 'h-1', cols: 80, rows: 24 },
+      expect.anything(),
+    );
+    expect(JSON.stringify(vi.mocked(ipc.sshConnectHost).mock.calls[0]?.[0])).not.toContain(
+      'password',
+    );
+    const tab = useSessions.getState().tabs.find((t) => t.id === tabId);
+    expect(tab?.target).toMatchObject({ hostId: 'h-1', label: 'Web' });
+    session.dispose();
+  });
+
+  it('applique à chaud la taille de police des paramètres', () => {
+    const session = new TerminalSession('police');
+    useSettings.setState({ terminalFontSize: 18 });
+    expect(session.terminal.options.fontSize).toBe(18);
+    session.dispose();
+    // Après destruction, le terminal ne suit plus les paramètres.
+    useSettings.setState({ terminalFontSize: 20 });
+    expect(session.terminal.options.fontSize).toBe(18);
+    useSettings.setState({ terminalFontSize: 14 });
+  });
+
+  it('ferme tous les onglets et détruit leurs terminaux au verrouillage', async () => {
+    const first = useSessions.getState().openTab();
+    const second = useSessions.getState().openTab();
+    const a = terminalSession(first);
+    const b = terminalSession(second);
+    closeAllTabs();
+    expect(useSessions.getState().tabs).toHaveLength(0);
+    expect(useSessions.getState().activeTabId).toBe(HOME_TAB_ID);
+    expect(fake(a).dispose).toHaveBeenCalled();
+    expect(fake(b).dispose).toHaveBeenCalled();
+    // Le registre est vidé : un nouvel accès crée un nouveau terminal.
+    expect(terminalSession(first)).not.toBe(a);
+    closeAllTabs();
+    await Promise.resolve();
   });
 });

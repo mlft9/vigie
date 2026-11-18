@@ -5,12 +5,21 @@ mod commands;
 mod error;
 mod logging;
 mod navigation;
+mod settings;
 mod state;
+mod vault_state;
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use core_ssh::KnownHosts;
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+use crate::commands::vault::lock_everything;
+use crate::settings::SettingsStore;
 use crate::state::SessionManager;
+use crate::vault_state::{Activity, LockReason, VaultState};
 
 /// Nom de l'application côté Rust (ADR-014). Seule autre source : `productName` dans
 /// `tauri.conf.json` et la clé i18n `app.name`.
@@ -18,8 +27,27 @@ pub const APP_NAME: &str = "Younji";
 
 /// Étiquette de la fenêtre principale ; elle doit correspondre à `capabilities/main.json`.
 const MAIN_WINDOW: &str = "main";
-/// Fichier des clés d'hôte acceptées, dans le dossier de données (HKY-03).
-const KNOWN_HOSTS_FILE: &str = "known_hosts";
+/// Ancien fichier des clés d'hôte en clair (étape 1), repris dans le coffre à sa création.
+const LEGACY_KNOWN_HOSTS_FILE: &str = "known_hosts";
+/// Fichier du coffre chiffré (SECURITE.md §3.3).
+const VAULT_FILE: &str = "vault.younji";
+/// Paramètres d'apparence (en clair, sans donnée sensible).
+const SETTINGS_FILE: &str = "settings.json";
+/// Fréquence de vérification du verrouillage automatique.
+const AUTO_LOCK_TICK: Duration = Duration::from_secs(5);
+
+/// Verrouille le coffre quand le délai d'inactivité est écoulé. Le minuteur tourne dans le
+/// cœur : l'interface ne peut pas l'arrêter, seulement signaler une activité.
+fn spawn_auto_lock(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(AUTO_LOCK_TICK).await;
+            if app.state::<VaultState>().idle_lock_due(Activity::now()) {
+                lock_everything(&app, LockReason::Idle);
+            }
+        }
+    });
+}
 
 /// Démarre l'application.
 pub fn run() {
@@ -38,7 +66,16 @@ pub fn run() {
             );
 
             let data_dir = app.path().app_data_dir()?;
-            app.manage(SessionManager::new(data_dir.join(KNOWN_HOSTS_FILE)));
+            let vault = VaultState::new(
+                data_dir.join(VAULT_FILE),
+                data_dir.join(LEGACY_KNOWN_HOSTS_FILE),
+            );
+            // Les clés d'hôte connues sont stockées dans le coffre (chiffrées et authentifiées).
+            let known_hosts = Arc::new(KnownHosts::with_storage(vault.known_hosts_storage()));
+            app.manage(SessionManager::new(known_hosts));
+            app.manage(vault);
+            app.manage(SettingsStore::new(data_dir.join(SETTINGS_FILE)));
+            spawn_auto_lock(app.handle().clone());
 
             // Le serveur Vite n'est autorisé qu'en développement.
             let dev_url = if cfg!(dev) {
@@ -62,11 +99,11 @@ pub fn run() {
                     allowed
                 })
                 // Un rechargement de l'interface (F5, erreur) perd les Channel : les sessions
-                // n'auraient plus personne pour les piloter. On les ferme, ce qui efface aussi
-                // leurs secrets de la mémoire.
+                // n'auraient plus personne pour les piloter. On les ferme et on verrouille le
+                // coffre, ce qui efface aussi les secrets de la mémoire.
                 .on_page_load(|window, payload| {
                     if payload.event() == PageLoadEvent::Started {
-                        window.state::<SessionManager>().close_all_sessions();
+                        lock_everything(window.app_handle(), LockReason::Reload);
                     }
                 })
                 .on_new_window(|url, _| {
@@ -88,7 +125,30 @@ pub fn run() {
             commands::ssh::ssh_host_key_decision,
             commands::ssh::ssh_close,
             commands::ssh::ssh_pick_key_file,
+            commands::ssh::ssh_connect_host,
             commands::url::open_external_url,
+            commands::vault::vault_status,
+            commands::vault::vault_create,
+            commands::vault::vault_unlock,
+            commands::vault::vault_lock,
+            commands::vault::vault_change_password,
+            commands::vault::vault_touch,
+            commands::vault::vault_watch,
+            commands::vault::vault_set_auto_lock,
+            commands::book::vault_snapshot,
+            commands::book::host_save,
+            commands::book::host_delete,
+            commands::book::group_save,
+            commands::book::group_delete,
+            commands::book::identity_save,
+            commands::book::identity_delete,
+            commands::book::key_import,
+            commands::book::key_rename,
+            commands::book::key_delete,
+            commands::book::known_host_list,
+            commands::book::known_host_delete,
+            commands::settings::settings_get,
+            commands::settings::settings_set,
         ])
         .run(tauri::generate_context!());
 

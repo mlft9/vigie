@@ -337,7 +337,7 @@ async fn rejected_host_key_aborts_without_authenticating() {
     );
     assert_eq!(fixture.auth_attempts.load(Ordering::SeqCst), 0);
     // Rien n'a été enregistré.
-    assert!(!fixture.known_hosts.path().exists());
+    assert!(!fixture.known_hosts.path().unwrap().exists());
     // Une seconde décision n'est plus attendue.
     assert_eq!(
         client.handle.decide_host_key(true),
@@ -361,7 +361,7 @@ async fn changed_host_key_is_refused_before_any_credential_is_sent() {
         fixture.port,
         other.public_key().to_openssh().unwrap()
     );
-    std::fs::write(fixture.known_hosts.path(), line).unwrap();
+    std::fs::write(fixture.known_hosts.path().unwrap(), line).unwrap();
 
     let mut client = Client::connect(&fixture, password(PASSWORD));
     match client.next_event().await {
@@ -527,7 +527,7 @@ async fn closing_during_host_key_prompt_aborts() {
         client.next_event().await,
         disconnected(SshError::SessionClosed)
     );
-    assert!(!fixture.known_hosts.path().exists());
+    assert!(!fixture.known_hosts.path().unwrap().exists());
 }
 
 #[tokio::test]
@@ -592,10 +592,31 @@ async fn accepted_key_is_written_in_openssh_format() {
     let fixture = start_server(None).await;
     let mut client = Client::connect(&fixture, password(PASSWORD));
     client.accept_and_connect().await;
-    let written = std::fs::read_to_string(fixture.known_hosts.path()).unwrap();
+    let written = std::fs::read_to_string(fixture.known_hosts.path().unwrap()).unwrap();
     let encoded = fixture.host_key.to_openssh().unwrap();
     assert_eq!(
         written,
         format!("[127.0.0.1]:{} {}\n", fixture.port, encoded.trim())
     );
+}
+
+#[tokio::test]
+async fn identity_with_key_and_password_falls_back_to_the_password() {
+    // Clé refusée par le serveur, mot de passe correct : connexion par le mot de passe.
+    let fixture = start_server(None).await;
+    let refused = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    let credentials =
+        Credentials::KeyThenPassword(Arc::new(refused), SecretString::from(PASSWORD.to_owned()));
+    let mut client = Client::connect(&fixture, credentials);
+    client.accept_and_connect().await;
+    client.wait_output("pret").await;
+
+    // Clé acceptée : le mot de passe (faux ici) n'est jamais essayé.
+    let user_key = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    let fixture = start_server(Some(user_key.public_key().clone())).await;
+    let credentials =
+        Credentials::KeyThenPassword(Arc::new(user_key), SecretString::from("faux".to_owned()));
+    let mut client = Client::connect(&fixture, credentials);
+    client.accept_and_connect().await;
+    client.wait_output("pret").await;
 }

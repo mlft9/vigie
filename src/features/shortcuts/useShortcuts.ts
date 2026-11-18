@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { closeTab, existingTerminalSession } from '@/features/terminal/TerminalSession';
+import { lockNow } from '@/features/vault/lock';
 import { useSessions } from '@/stores/sessions';
 
 import { matchShortcut } from './shortcuts';
@@ -71,6 +72,11 @@ export function useShortcuts() {
             handled();
             void terminal.copySelection().catch(() => undefined);
           }
+          break;
+        case 'lock':
+          // Verrouillage (VLT-03, APP-04) : prioritaire, même depuis le terminal.
+          handled();
+          void lockNow();
           break;
         case 'paste':
           // Pas de preventDefault : le navigateur déclenche le collage natif, intercepté par la

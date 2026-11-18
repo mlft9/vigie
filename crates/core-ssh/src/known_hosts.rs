@@ -8,11 +8,12 @@
 //!   que celui enregistré et retomber sur une simple demande de confiance ;
 //! - clé marquée `@revoked` : [`HostKeyStatus::Revoked`], refus.
 //!
-//! Le fichier est écrit par Younji, en clair et sans hachage des noms d'hôtes (le déplacement
-//! éventuel dans le coffre sera tranché à l'étape 2). Les lignes hachées (`|1|…`), les motifs
-//! (`*`, `?`, `!`) et les lignes `@cert-authority` sont ignorés : seules les correspondances
-//! exactes comptent. Chaque ajout réécrit le fichier de façon atomique (fichier temporaire dans
-//! le même dossier, `fsync`, renommage), avec des permissions 0600 sous Linux.
+//! Le contenu, au format OpenSSH et sans hachage des noms d'hôtes, est lu et écrit par un
+//! [`KnownHostsStorage`] : le coffre chiffré dans l'application (étape 2), ou un fichier
+//! (tests, outils). Les lignes hachées (`|1|…`), les motifs (`*`, `?`, `!`) et les lignes
+//! `@cert-authority` sont ignorés : seules les correspondances exactes comptent. Le stockage
+//! fichier réécrit le fichier de façon atomique (fichier temporaire dans le même dossier,
+//! `fsync`, renommage), avec des permissions 0600 sous Linux.
 
 use std::fs;
 use std::io::{self, Write};
@@ -68,31 +69,137 @@ pub fn fingerprint(key: &PublicKey) -> String {
     key.fingerprint(HashAlg::Sha256).to_string()
 }
 
-/// Accès au fichier `known_hosts` de l'application.
+/// Lecture et écriture du contenu `known_hosts` (texte au format OpenSSH).
+pub trait KnownHostsStorage: Send + Sync {
+    /// Contenu actuel (vide s'il n'y a encore rien).
+    fn load(&self) -> Result<String, SshError>;
+    /// Remplace le contenu.
+    fn store(&self, content: String) -> Result<(), SshError>;
+    /// Fichier sur le disque, s'il y en a un.
+    fn location(&self) -> Option<&Path> {
+        None
+    }
+}
+
+/// Stockage dans un fichier, écrit de façon atomique (0600 sous Linux).
 #[derive(Debug)]
-pub struct KnownHosts {
+pub struct FileStorage {
     path: PathBuf,
-    /// Sérialise les ajouts (deux onglets qui acceptent une clé en même temps).
+}
+
+impl FileStorage {
+    /// Fichier à l'emplacement donné ; il est créé, avec son dossier, au premier ajout.
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    fn write_atomic(&self, bytes: &[u8]) -> io::Result<()> {
+        let dir = self
+            .path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        create_private_dir(dir)?;
+        // NamedTempFile est créé en 0600 sous Unix, dans le même dossier que la cible pour que
+        // le renommage soit atomique.
+        let mut file = tempfile::NamedTempFile::new_in(dir)?;
+        file.write_all(bytes)?;
+        file.as_file().sync_all()?;
+        file.persist(&self.path).map_err(|e| e.error)?;
+        Ok(())
+    }
+}
+
+impl KnownHostsStorage for FileStorage {
+    fn load(&self) -> Result<String, SshError> {
+        let io_error = |error: io::Error| {
+            tracing::warn!(%error, "lecture de known_hosts impossible");
+            SshError::KnownHostsIo
+        };
+        match fs::metadata(&self.path) {
+            Ok(meta) if meta.len() > MAX_FILE_SIZE => {
+                tracing::warn!("known_hosts trop volumineux, ignoré");
+                return Err(SshError::KnownHostsIo);
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(String::new()),
+            Err(error) => return Err(io_error(error)),
+        }
+        fs::read_to_string(&self.path).map_err(io_error)
+    }
+
+    fn store(&self, content: String) -> Result<(), SshError> {
+        self.write_atomic(content.as_bytes()).map_err(|error| {
+            tracing::warn!(%error, "écriture de known_hosts impossible");
+            SshError::KnownHostsIo
+        })
+    }
+
+    fn location(&self) -> Option<&Path> {
+        Some(&self.path)
+    }
+}
+
+/// Clé d'hôte enregistrée, pour l'affichage et la suppression (HKY-04).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnownHostEntry {
+    /// Position de la ligne dans le contenu (0 = première ligne) : c'est elle qui désigne
+    /// l'entrée à supprimer, pas la forme nettoyée pour l'affichage.
+    pub line: usize,
+    /// Liste d'hôtes de la ligne (`srv`, `[srv]:2222`…), nettoyée pour l'affichage.
+    pub hosts: String,
+    /// Algorithme et empreinte (vide si la clé est illisible).
+    pub key: KeyInfo,
+    /// Clé marquée `@revoked`.
+    pub revoked: bool,
+}
+
+/// Longueur maximale de la liste d'hôtes affichée.
+const MAX_HOSTS_DISPLAY_LEN: usize = 512;
+
+/// Ne garde que les caractères ASCII visibles : le contenu peut venir d'un fichier importé.
+fn display_text(text: &str, max: usize) -> String {
+    text.chars()
+        .filter(char::is_ascii_graphic)
+        .take(max)
+        .collect()
+}
+
+/// Accès aux clés d'hôte connues de l'application.
+pub struct KnownHosts {
+    storage: Box<dyn KnownHostsStorage>,
+    /// Sérialise les modifications (deux onglets qui acceptent une clé en même temps).
     write_lock: Mutex<()>,
 }
 
+impl std::fmt::Debug for KnownHosts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KnownHosts").finish_non_exhaustive()
+    }
+}
+
 impl KnownHosts {
-    /// Crée un accès au fichier indiqué. Le fichier et son dossier sont créés au premier ajout.
+    /// Clés d'hôte stockées dans un fichier.
     pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self::with_storage(FileStorage::new(path))
+    }
+
+    /// Clés d'hôte stockées par un autre moyen (le coffre).
+    pub fn with_storage(storage: impl KnownHostsStorage + 'static) -> Self {
         Self {
-            path: path.into(),
+            storage: Box::new(storage),
             write_lock: Mutex::new(()),
         }
     }
 
-    /// Chemin du fichier.
-    pub fn path(&self) -> &Path {
-        &self.path
+    /// Fichier sur le disque, s'il y en a un.
+    pub fn path(&self) -> Option<&Path> {
+        self.storage.location()
     }
 
     /// Vérifie la clé présentée par `host:port`.
     pub fn check(&self, host: &str, port: u16, key: &PublicKey) -> Result<HostKeyStatus, SshError> {
-        let content = self.read()?;
+        let content = self.storage.load()?;
         Ok(evaluate(&content, &host_pattern(host, port), key))
     }
 
@@ -101,7 +208,7 @@ impl KnownHosts {
     /// présente.
     pub fn add(&self, host: &str, port: u16, key: &PublicKey) -> Result<(), SshError> {
         let _guard = self.write_lock.lock().map_err(|_| SshError::KnownHostsIo)?;
-        let content = self.read()?;
+        let content = self.storage.load()?;
         let pattern = host_pattern(host, port);
         match evaluate(&content, &pattern, key) {
             HostKeyStatus::Trusted => return Ok(()),
@@ -120,44 +227,61 @@ impl KnownHosts {
             new_content.push('\n');
         }
         new_content.push_str(&format!("{pattern} {algorithm} {data}\n"));
-        self.write_atomic(new_content.as_bytes()).map_err(|error| {
-            tracing::warn!(%error, "écriture de known_hosts impossible");
-            SshError::KnownHostsIo
-        })
+        self.storage.store(new_content)
     }
 
-    fn read(&self) -> Result<String, SshError> {
-        let io_error = |error: io::Error| {
-            tracing::warn!(%error, "lecture de known_hosts impossible");
-            SshError::KnownHostsIo
-        };
-        match fs::metadata(&self.path) {
-            Ok(meta) if meta.len() > MAX_FILE_SIZE => {
-                tracing::warn!("known_hosts trop volumineux, ignoré");
-                return Err(SshError::KnownHostsIo);
+    /// Clés enregistrées (lignes ordinaires et `@revoked`), dans l'ordre du contenu.
+    pub fn entries(&self) -> Result<Vec<KnownHostEntry>, SshError> {
+        let content = self.storage.load()?;
+        Ok(content
+            .lines()
+            .enumerate()
+            .filter_map(|(index, line)| to_entry(index, &parse_line(line)?))
+            .collect())
+    }
+
+    /// Supprime la ligne désignée par `entry` (telle que renvoyée par [`KnownHosts::entries`]),
+    /// à condition qu'elle n'ait pas changé entre-temps. Renvoie le nombre de lignes retirées
+    /// (0 ou 1). C'est le seul moyen de débloquer un hôte dont la clé a changé (HKY-02, HKY-04).
+    pub fn remove(&self, entry: &KnownHostEntry) -> Result<usize, SshError> {
+        let _guard = self.write_lock.lock().map_err(|_| SshError::KnownHostsIo)?;
+        let content = self.storage.load()?;
+        let mut removed = 0;
+        let mut kept = String::with_capacity(content.len());
+        for (index, line) in content.lines().enumerate() {
+            let matches = index == entry.line
+                && parse_line(line)
+                    .and_then(|parsed| to_entry(index, &parsed))
+                    .is_some_and(|candidate| &candidate == entry);
+            if matches {
+                removed += 1;
+            } else {
+                kept.push_str(line);
+                kept.push('\n');
             }
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(String::new()),
-            Err(error) => return Err(io_error(error)),
         }
-        fs::read_to_string(&self.path).map_err(io_error)
+        if removed > 0 {
+            self.storage.store(kept)?;
+            tracing::info!(removed, "clé d'hôte supprimée");
+        }
+        Ok(removed)
     }
+}
 
-    fn write_atomic(&self, bytes: &[u8]) -> io::Result<()> {
-        let dir = self
-            .path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."));
-        create_private_dir(dir)?;
-        // NamedTempFile est créé en 0600 sous Unix, dans le même dossier que la cible pour que
-        // le renommage soit atomique.
-        let mut file = tempfile::NamedTempFile::new_in(dir)?;
-        file.write_all(bytes)?;
-        file.as_file().sync_all()?;
-        file.persist(&self.path).map_err(|e| e.error)?;
-        Ok(())
-    }
+/// Ligne affichable : lignes ordinaires et `@revoked` ; `@cert-authority` et marqueurs inconnus
+/// sont ignorés (comme pour la vérification).
+fn to_entry(line: usize, entry: &Entry<'_>) -> Option<KnownHostEntry> {
+    let revoked = match entry.marker {
+        None => false,
+        Some("@revoked") => true,
+        Some(_) => return None,
+    };
+    Some(KnownHostEntry {
+        line,
+        hosts: display_text(entry.hosts, MAX_HOSTS_DISPLAY_LEN),
+        key: known_info(entry),
+        revoked,
+    })
 }
 
 /// Crée le dossier avec des droits restrictifs (0700 sous Linux) s'il n'existe pas.
@@ -504,10 +628,101 @@ mod tests {
     fn oversized_file_is_rejected() {
         let (_dir, kh) = store("");
         let big = vec![b'#'; (MAX_FILE_SIZE + 1) as usize];
-        fs::write(kh.path(), big).unwrap();
+        fs::write(kh.path().unwrap(), big).unwrap();
         assert_eq!(
             kh.check("h", 22, &key(ED25519)),
             Err(SshError::KnownHostsIo)
         );
+    }
+
+    /// Stockage en mémoire, comme celui du coffre.
+    #[derive(Default)]
+    struct Memory(Mutex<String>);
+
+    impl KnownHostsStorage for Memory {
+        fn load(&self) -> Result<String, SshError> {
+            Ok(self.0.lock().unwrap().clone())
+        }
+        fn store(&self, content: String) -> Result<(), SshError> {
+            *self.0.lock().unwrap() = content;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn custom_storage_is_used_and_has_no_path() {
+        let kh = KnownHosts::with_storage(Memory::default());
+        assert!(kh.path().is_none());
+        kh.add("srv.lab", 22, &key(ED25519)).unwrap();
+        assert_eq!(
+            kh.check("srv.lab", 22, &key(ED25519)).unwrap(),
+            HostKeyStatus::Trusted
+        );
+    }
+
+    #[test]
+    fn entries_list_plain_and_revoked_lines_only() {
+        let content = format!(
+            "# commentaire\n{}{}{}srv.lab ssh-dss illisible\n",
+            line("srv.lab,[srv.lab]:2222", ED25519),
+            line("@revoked *", ECDSA),
+            line("@cert-authority *.lab", ED25519),
+        );
+        let (_dir, kh) = store(&content);
+        let entries = kh.entries().unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].hosts, "srv.lab,[srv.lab]:2222");
+        assert_eq!(entries[0].key.fingerprint, ED25519_FP);
+        assert!(!entries[0].revoked);
+        assert!(entries[1].revoked);
+        assert_eq!(entries[1].key.fingerprint, ECDSA_FP);
+        assert_eq!(entries[2].key.algorithm, "ssh-dss");
+        assert_eq!(entries[2].key.fingerprint, "");
+    }
+
+    #[test]
+    fn removing_an_entry_unblocks_the_host() {
+        let content = format!(
+            "# garde-moi\n{}{}",
+            line("srv.lab", ED25519),
+            line("autre", ED25519)
+        );
+        let (dir, kh) = store(&content);
+        assert!(matches!(
+            kh.check("srv.lab", 22, &key(ECDSA)).unwrap(),
+            HostKeyStatus::Changed { .. }
+        ));
+        let entry = kh.entries().unwrap().remove(0);
+        assert_eq!(kh.remove(&entry).unwrap(), 1);
+        // L'hôte redevient inconnu : une nouvelle clé peut être acceptée explicitement.
+        assert_eq!(
+            kh.check("srv.lab", 22, &key(ECDSA)).unwrap(),
+            HostKeyStatus::Unknown
+        );
+        let written = fs::read_to_string(dir.path().join("known_hosts")).unwrap();
+        assert_eq!(written, format!("# garde-moi\n{}", line("autre", ED25519)));
+        // Supprimer une entrée absente ne change rien.
+        assert_eq!(kh.remove(&entry).unwrap(), 0);
+    }
+
+    #[test]
+    fn removal_targets_one_exact_line_not_its_displayed_form() {
+        // Deux lignes affichées de la même façon (caractère non ASCII retiré à l'affichage).
+        let content = line("srvé.lab", ED25519) + &line("srv.lab", ED25519);
+        let (_dir, kh) = store(&content);
+        let entries = kh.entries().unwrap();
+        assert_eq!(entries[0].hosts, entries[1].hosts);
+        assert_eq!(kh.remove(&entries[1]).unwrap(), 1);
+        let left = kh.entries().unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].line, 0);
+        // Une entrée périmée (contenu modifié entre-temps) ne supprime rien.
+        assert_eq!(kh.remove(&entries[1]).unwrap(), 0);
+    }
+
+    #[test]
+    fn displayed_hosts_are_sanitized() {
+        let (_dir, kh) = store(&line("srv\u{1b}[31m.lab", ED25519));
+        assert_eq!(kh.entries().unwrap()[0].hosts, "srv[31m.lab");
     }
 }

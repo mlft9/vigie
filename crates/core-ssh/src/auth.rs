@@ -30,6 +30,9 @@ pub enum Credentials {
     Password(SecretString),
     /// Clé privée déjà déchiffrée.
     PrivateKey(Arc<PrivateKey>),
+    /// Identité du coffre avec clé **et** mot de passe : la clé est essayée d'abord, le mot de
+    /// passe ensuite si le serveur la refuse (HST-03).
+    KeyThenPassword(Arc<PrivateKey>, SecretString),
 }
 
 impl fmt::Debug for Credentials {
@@ -39,6 +42,11 @@ impl fmt::Debug for Credentials {
             Self::PrivateKey(key) => write!(
                 f,
                 "Credentials::PrivateKey({}, <masquée>)",
+                key.algorithm().as_str()
+            ),
+            Self::KeyThenPassword(key, _) => write!(
+                f,
+                "Credentials::KeyThenPassword({}, <masquée>, <masqué>)",
                 key.algorithm().as_str()
             ),
         }
@@ -94,6 +102,67 @@ pub fn load_private_key(
     }
     let text = std::str::from_utf8(&bytes).map_err(|_| SshError::KeyInvalid)?;
     decode_private_key(text, passphrase)
+}
+
+/// Clé privée prête à être stockée dans le coffre (KEY-02).
+pub struct ImportedKey {
+    /// Algorithme (`ssh-ed25519`…).
+    pub algorithm: String,
+    /// Empreinte `SHA256:…`.
+    pub fingerprint: String,
+    /// Clé publique au format OpenSSH (une ligne, sans commentaire).
+    pub public_key: String,
+    /// Clé privée au format OpenSSH, **non chiffrée** : c'est le coffre qui la protège.
+    pub private_key: SecretString,
+}
+
+impl fmt::Debug for ImportedKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImportedKey")
+            .field("algorithm", &self.algorithm)
+            .field("fingerprint", &self.fingerprint)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Lit une clé privée (chiffrée ou non), puis la ré-encode au format OpenSSH sans passphrase
+/// pour la stocker dans le coffre (opération bloquante : `spawn_blocking`).
+pub fn import_private_key(
+    path: &Path,
+    passphrase: Option<&SecretString>,
+) -> Result<ImportedKey, SshError> {
+    let key = load_private_key(path, passphrase)?;
+    prepare_import(&key)
+}
+
+/// Ré-encode une clé déjà déchiffrée pour le coffre.
+pub fn prepare_import(key: &PrivateKey) -> Result<ImportedKey, SshError> {
+    let encoded = key
+        .to_openssh(keys::ssh_key::LineEnding::LF)
+        .map_err(|_| SshError::KeyInvalid)?;
+    // Copie de taille exacte (aucune réallocation dans `SecretString`) ; le tampon d'origine,
+    // un `Zeroizing<String>`, est effacé à sa destruction.
+    let private_key = SecretString::from(String::from(encoded.as_str()));
+    let public = key.public_key();
+    let openssh = public.to_openssh().map_err(|_| SshError::KeyInvalid)?;
+    // Sans le commentaire : il pourrait contenir un nom d'utilisateur ou de machine.
+    let public_key = openssh
+        .split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let info = crate::KeyInfo::of(public);
+    Ok(ImportedKey {
+        algorithm: info.algorithm,
+        fingerprint: info.fingerprint,
+        public_key,
+        private_key,
+    })
+}
+
+/// Décode une clé stockée dans le coffre (format OpenSSH, non chiffrée).
+pub fn decode_stored_key(text: &SecretString) -> Result<PrivateKey, SshError> {
+    decode_private_key(text.expose_secret(), None)
 }
 
 /// Décode une clé privée (OpenSSH, PEM PKCS#1/PKCS#8, PuTTY), chiffrée ou non.
@@ -226,6 +295,30 @@ mod tests {
     }
 
     #[test]
+    fn imported_key_is_reencoded_without_passphrase() {
+        let dir = tempfile::tempdir().unwrap();
+        let (key, text) = generate(Algorithm::Ed25519, Some("pass"));
+        let path = dir.path().join("cle");
+        std::fs::write(&path, &text).unwrap();
+        let imported = import_private_key(&path, Some(&secret("pass"))).unwrap();
+        assert_eq!(imported.algorithm, "ssh-ed25519");
+        assert_eq!(
+            imported.fingerprint,
+            key.public_key().fingerprint(HashAlg::Sha256).to_string()
+        );
+        assert!(imported.public_key.starts_with("ssh-ed25519 AAAA"));
+        assert_eq!(imported.public_key.split_whitespace().count(), 2);
+        // Relisible sans passphrase, et identique à l'originale.
+        let decoded = decode_stored_key(&imported.private_key).unwrap();
+        assert_eq!(decoded.public_key().key_data(), key.public_key().key_data());
+        assert!(!format!("{imported:?}").contains("PRIVATE"));
+        assert_eq!(
+            import_private_key(&path, None).unwrap_err(),
+            SshError::KeyPassphraseRequired
+        );
+    }
+
+    #[test]
     fn debug_never_shows_secrets() {
         let creds = Credentials::password(secret("hunter2")).unwrap();
         assert!(!format!("{creds:?}").contains("hunter2"));
@@ -233,5 +326,8 @@ mod tests {
         let creds = Credentials::PrivateKey(Arc::new(key));
         let shown = format!("{creds:?}");
         assert!(shown.contains("ssh-ed25519") && shown.contains("masquée"));
+        let (key, _) = generate(Algorithm::Ed25519, None);
+        let creds = Credentials::KeyThenPassword(Arc::new(key), secret("hunter2"));
+        assert!(!format!("{creds:?}").contains("hunter2"));
     }
 }

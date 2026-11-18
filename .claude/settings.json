@@ -83,7 +83,6 @@
       "Edit(./src-tauri/capabilities/**)",
       "Edit(./.github/workflows/**)"
     ],
-    "ask": ["Edit(./docs/SECURITE.md)", "Edit(./docs/DECISIONS.md)"],
     "deny": [
       "Read(~/.ssh/**)",
       "Read(~/.tauri/**)",
@@ -104,7 +103,10 @@
       "PowerShell(git push --force *)",
       "PowerShell(git push -f *)",
       "PowerShell(Remove-Item -Recurse*)",
-      "PowerShell(Remove-Item * -Recurse*)"
-    ]
+      "PowerShell(Remove-Item * -Recurse*)",
+      "Bash(git push origin main*)",
+      "PowerShell(git push origin main*)"
+    ],
+    "defaultMode": "acceptEdits"
   }
 }

@@ -7,16 +7,26 @@ import { HostKeyChangedAlert } from '@/features/connect/HostKeyChangedAlert';
 import { HostKeyDialog } from '@/features/connect/HostKeyDialog';
 import { QuickConnectForm } from '@/features/connect/QuickConnectForm';
 import { cn } from '@/lib/utils';
-import { type SessionTab, useSessions } from '@/stores/sessions';
+import { type ConnectTarget, HOME_TAB_ID, type SessionTab, useSessions } from '@/stores/sessions';
+import { useUi } from '@/stores/ui';
 
 import { closeTab, terminalSession } from './TerminalSession';
 import { TerminalView } from './TerminalView';
 
 /** Contenu d'un onglet de session : terminal et écran adapté à l'état de la connexion. */
+/** Reconnexion : un hôte du carnet se reconnecte directement avec son identité enregistrée. */
+function reconnect(tab: SessionTab, target: ConnectTarget | null): void {
+  if (target?.hostId) {
+    void terminalSession(tab.id).connectHost({ ...target, hostId: target.hostId });
+  } else {
+    useSessions.getState().update(tab.id, { status: 'form', errorCode: null });
+  }
+}
+
 export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean }) {
   const { t } = useTranslation();
-  const update = useSessions((s) => s.update);
   const target = tab.target;
+  const fromBook = Boolean(target?.hostId);
 
   return (
     <div
@@ -28,7 +38,37 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
     >
       <TerminalView tabId={tab.id} active={active} interactive={tab.status === 'connected'} />
 
-      {tab.status === 'form' && (
+      {tab.status === 'form' && fromBook && (
+        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
+          <div className="flex w-full max-w-md flex-col gap-4 rounded-lg border bg-background p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">
+              {t('session.hostFailedTitle', { host: target?.label ?? target?.host ?? '' })}
+            </h2>
+            <ErrorMessage code={tab.errorCode ?? 'unknown'} />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  closeTab(tab.id);
+                }}
+              >
+                <X aria-hidden="true" />
+                {t('session.closeTab')}
+              </Button>
+              <Button
+                onClick={() => {
+                  reconnect(tab, target);
+                }}
+              >
+                <RotateCw aria-hidden="true" />
+                {t('session.retry')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab.status === 'form' && !fromBook && (
         <div className="absolute inset-0 z-20 flex items-start justify-center overflow-auto bg-background/95 p-8">
           <QuickConnectForm
             // Nouvelle instance à chaque retour au formulaire : valeurs pré-remplies à jour.
@@ -72,6 +112,10 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
             onClose={() => {
               closeTab(tab.id);
             }}
+            onManage={() => {
+              useUi.getState().setActiveSection('keys');
+              useSessions.getState().activate(HOME_TAB_ID);
+            }}
           />
         </div>
       )}
@@ -83,7 +127,7 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
             <Button
               size="sm"
               onClick={() => {
-                update(tab.id, { status: 'form', errorCode: null });
+                reconnect(tab, target);
               }}
             >
               <RotateCw aria-hidden="true" />

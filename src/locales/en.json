@@ -23,8 +23,6 @@
   },
   "sections": {
     "comingSoon": "This section will arrive in step {{step}} of the roadmap.",
-    "hosts": "Your host book will appear here.",
-    "keys": "Your SSH keys and identities will appear here.",
     "snippets": "Your reusable commands will appear here.",
     "tunnels": "Your SSH tunnels will appear here.",
     "sftp": "The remote file browser will appear here."
@@ -50,10 +48,33 @@
       "title": "About",
       "version": "Version",
       "unavailable": "unavailable"
+    },
+    "terminalFont": {
+      "label": "Terminal font size",
+      "description": "Applied immediately to every terminal.",
+      "size": "{{size}} px"
+    },
+    "security": {
+      "title": "Security",
+      "autoLock": "Automatic lock",
+      "autoLockDescription": "The vault locks after this delay without keyboard or mouse activity. Open sessions are then closed.",
+      "minutes_one": "After {{count}} minute",
+      "minutes_other": "After {{count}} minutes",
+      "changePassword": "Change the master password",
+      "current": "Current password",
+      "new": "New password",
+      "changePasswordSubmit": "Change password",
+      "passwordChanged": "Master password changed. The old one no longer works."
     }
   },
   "common": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "refresh": "Refresh",
+    "rename": "Rename",
+    "retry": "Retry",
+    "save": "Save"
   },
   "connect": {
     "title": "Quick connect",
@@ -79,7 +100,9 @@
     "connecting": "Connecting to {{host}}…",
     "authenticating": "Authenticating…",
     "reconnect": "Reconnect",
-    "closeTab": "Close tab"
+    "closeTab": "Close tab",
+    "hostFailedTitle": "Cannot connect to {{host}}",
+    "retry": "Retry"
   },
   "hostKey": {
     "presented": "Key presented by the server",
@@ -96,8 +119,9 @@
       "explanation": "Someone may be trying to intercept the connection (man-in-the-middle attack). It may also be a reinstalled server or regenerated keys. No credentials were sent.",
       "known": "Recorded key",
       "unblockTitle": "If the change is legitimate",
-      "unblock": "Check the new fingerprint with the server's administrator, then delete the line starting with {{host}} in the file below. Host key management will come to the interface in step 2.",
-      "close": "Close tab"
+      "unblock": "Check the new fingerprint with the server's administrator. Only then, delete the old key of {{host}} in Keys > Known host keys, and reconnect to accept the new one.",
+      "close": "Close tab",
+      "manage": "Manage host keys"
     },
     "unreadable": "(unreadable recorded key)"
   },
@@ -146,7 +170,8 @@
       "moveTabRight": "Move tab right",
       "search": "Search the terminal",
       "copy": "Copy selection",
-      "paste": "Paste"
+      "paste": "Paste",
+      "lock": "Lock the vault"
     }
   },
   "errors": {
@@ -199,6 +224,167 @@
       "missing_fields": "Enter the host and the user.",
       "missing_password": "Enter the password.",
       "missing_key": "Choose a private key file."
+    },
+    "vault": {
+      "not_found": "No vault exists yet: create one.",
+      "already_exists": "A vault already exists: it will not be overwritten.",
+      "locked": "The vault is locked. Unlock it to continue.",
+      "wrong_password_or_corrupted": "Wrong password or damaged vault.",
+      "invalid_file": "The vault file is unreadable or damaged.",
+      "unsupported_version": "This vault was created by a newer version of Younji.",
+      "kdf_params_rejected": "This vault's encryption parameters are refused (file tampered with?).",
+      "io": "The vault file could not be read or written. Check disk space and permissions.",
+      "random_unavailable": "The system random number generator is unavailable.",
+      "password_too_short": "The master password must be at least 12 characters long.",
+      "password_too_weak": "This master password is too easy to guess. Make it longer, for example with several unrelated words.",
+      "invalid_name": "Invalid name: 1 to 128 characters, no control characters.",
+      "invalid_address": "Invalid address.",
+      "invalid_port": "The port must be between 1 and 65535.",
+      "invalid_username": "Invalid user name (required when no identity is selected).",
+      "invalid_tags": "Invalid tags: at most 16, 32 characters each.",
+      "invalid_notes": "Invalid notes: at most 4096 characters.",
+      "invalid_secret": "The password is empty or too long.",
+      "identity_incomplete": "An identity needs a password, a key, or both.",
+      "invalid_auto_lock": "Lock delay not offered.",
+      "too_many_entries": "Maximum number of entries reached.",
+      "entry_not_found": "This item no longer exists.",
+      "key_in_use": "This key is used by an identity: remove it from the identity first.",
+      "identity_in_use": "This identity is used by a host: change the host's identity first.",
+      "known_hosts_too_large": "Too many host keys stored.",
+      "password_mismatch": "The two passwords do not match.",
+      "current_password_required": "Enter the current password.",
+      "backup_only": "The vault is missing, but its backup copy (vault.younji.bak) exists. To avoid overwriting it, Younji does not create a new vault: rename vault.younji.bak to vault.younji in the data folder, then restart."
+    },
+    "book": {
+      "no_identity": "This host has no saved identity."
+    },
+    "settings": {
+      "invalid": "Invalid setting.",
+      "io": "Settings could not be saved."
+    },
+    "keys": {
+      "copy_failed": "Copying to the clipboard failed."
     }
+  },
+  "vault": {
+    "loading": "Opening the vault…",
+    "lock": "Lock",
+    "create": {
+      "title": "Create your vault",
+      "intro": "Younji encrypts your hosts, identities, keys and known host keys in a vault protected by a master password. You will be asked for it at every start.",
+      "noRecovery": "This password cannot be recovered: if you forget it, the vault's content is lost. Write it down somewhere safe (password manager, paper kept in a safe place).",
+      "password": "Master password",
+      "confirm": "Confirm password",
+      "submit": "Create the vault",
+      "creating": "Encrypting…"
+    },
+    "unlock": {
+      "title": "Vault locked",
+      "password": "Master password",
+      "submit": "Unlock",
+      "unlocking": "Unlocking…",
+      "reason": {
+        "idle": "The vault was locked after a period of inactivity. Open sessions were closed.",
+        "reload": "The vault was locked when the interface reloaded."
+      }
+    },
+    "strength": {
+      "empty": "At least {{min}} characters. A phrase of several words is easier to remember and stronger.",
+      "tooShort": "Too short: at least {{min}} characters.",
+      "score0": "Very weak: easy to guess.",
+      "score1": "Weak: easy to guess.",
+      "score2": "Fair: still too easy to guess.",
+      "score3": "Strong.",
+      "score4": "Very strong."
+    }
+  },
+  "hosts": {
+    "groups": "Groups",
+    "allHosts": "All hosts",
+    "ungrouped": "No group",
+    "newGroup": "New group",
+    "renameGroup": "Rename group",
+    "groupName": "Group name",
+    "deleteGroupTitle": "Delete the group?",
+    "deleteGroupMessage": "The group “{{name}}” will be deleted. Its hosts are kept, without a group.",
+    "search": "Search hosts",
+    "list": "Hosts",
+    "quickConnect": "Quick connect",
+    "newHost": "New host",
+    "empty": "Your address book is empty. Add a host to connect to it with a double-click.",
+    "noMatch": "No matching host.",
+    "doubleClickHint": "Double-click or Enter to connect",
+    "connect": "Connect",
+    "connectTo": "Connect to {{name}}",
+    "editHost": "Edit {{name}}",
+    "deleteHost": "Delete {{name}}",
+    "deleteHostTitle": "Delete the host?",
+    "deleteHostMessage": "The host “{{name}}” will be removed from the address book. Its known host keys and identity are kept.",
+    "form": {
+      "newTitle": "New host",
+      "editTitle": "Edit host",
+      "name": "Name",
+      "namePlaceholder": "Defaults to the address",
+      "address": "Address",
+      "identity": "Identity",
+      "noIdentity": "None (ask when connecting)",
+      "usernameFromIdentity": "The identity's",
+      "noIdentityHint": "Without an identity, the password or key is asked at every connection.",
+      "group": "Group",
+      "tags": "Tags",
+      "tagsPlaceholder": "prod, web, lab (comma-separated)",
+      "notes": "Notes"
+    }
+  },
+  "keys": {
+    "title": "Private keys",
+    "empty": "No imported key. Import an existing key to use it in an identity.",
+    "name": "Name",
+    "copyPublic": "Copy public key",
+    "copyPublicFor": "Copy the public key of {{name}}",
+    "copied": "Copied",
+    "rename": "Rename {{name}}",
+    "renameTitle": "Rename key",
+    "delete": "Delete {{name}}",
+    "deleteTitle": "Delete the key?",
+    "deleteMessage": "The key “{{name}}” will be erased from the vault. The original file on disk is not touched.",
+    "import": {
+      "button": "Import a key",
+      "title": "Import a private key",
+      "intro": "The key is decrypted once with its passphrase, then stored in the vault, which protects it. The original file is neither modified nor deleted.",
+      "passphraseHint": "Leave empty if the key is not protected. The passphrase is not kept.",
+      "submit": "Import"
+    }
+  },
+  "identities": {
+    "title": "Identities",
+    "empty": "No identity. An identity groups a user name with a password and/or a key, reusable across hosts.",
+    "new": "New identity",
+    "newTitle": "New identity",
+    "editTitle": "Edit identity",
+    "intro": "With both a key and a password, the key is tried first, then the password if the server refuses the key.",
+    "name": "Name",
+    "key": "Key",
+    "noKey": "None",
+    "newPassword": "New password",
+    "passwordHint": "Optional when a key is selected.",
+    "passwordKeptHint": "Leave empty to keep the saved password (it is never shown).",
+    "removePassword": "Remove the saved password",
+    "withKey": "key {{name}}",
+    "withPassword": "password",
+    "edit": "Edit {{name}}",
+    "delete": "Delete {{name}}",
+    "deleteTitle": "Delete the identity?",
+    "deleteMessage": "The identity “{{name}}” and its password will be erased from the vault."
+  },
+  "knownHosts": {
+    "title": "Known host keys",
+    "intro": "Keys accepted on first connection. If a server's key changes, the connection is blocked until the old key is deleted here.",
+    "empty": "No host key saved.",
+    "revoked": "revoked",
+    "delete": "Delete the key of {{host}}",
+    "deleteTitle": "Delete this host key?",
+    "deleteMessage": "Host: {{host}}\nFingerprint: {{fingerprint}}\n\nOnly delete this key after checking with the administrator that the change is legitimate (reinstalled server, regenerated keys). On the next connection, the new key will be shown and must be accepted.",
+    "deleteConfirm": "Delete the key"
   }
 }

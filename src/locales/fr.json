@@ -23,8 +23,6 @@
   },
   "sections": {
     "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
-    "hosts": "Votre carnet d'hôtes apparaîtra ici.",
-    "keys": "Vos clés SSH et identités apparaîtront ici.",
     "snippets": "Vos commandes réutilisables apparaîtront ici.",
     "tunnels": "Vos tunnels SSH apparaîtront ici.",
     "sftp": "L'explorateur de fichiers distant apparaîtra ici."
@@ -50,10 +48,33 @@
       "title": "À propos",
       "version": "Version",
       "unavailable": "indisponible"
+    },
+    "terminalFont": {
+      "label": "Taille de police du terminal",
+      "description": "Appliquée à chaud à tous les terminaux.",
+      "size": "{{size}} px"
+    },
+    "security": {
+      "title": "Sécurité",
+      "autoLock": "Verrouillage automatique",
+      "autoLockDescription": "Le coffre se verrouille après ce délai sans activité au clavier ni à la souris. Les sessions ouvertes sont alors fermées.",
+      "minutes_one": "Après {{count}} minute",
+      "minutes_other": "Après {{count}} minutes",
+      "changePassword": "Changer le mot de passe maître",
+      "current": "Mot de passe actuel",
+      "new": "Nouveau mot de passe",
+      "changePasswordSubmit": "Changer le mot de passe",
+      "passwordChanged": "Mot de passe maître changé. L'ancien ne fonctionne plus."
     }
   },
   "common": {
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "refresh": "Actualiser",
+    "rename": "Renommer",
+    "retry": "Réessayer",
+    "save": "Enregistrer"
   },
   "connect": {
     "title": "Connexion rapide",
@@ -79,7 +100,9 @@
     "connecting": "Connexion à {{host}}…",
     "authenticating": "Authentification…",
     "reconnect": "Reconnecter",
-    "closeTab": "Fermer l'onglet"
+    "closeTab": "Fermer l'onglet",
+    "hostFailedTitle": "Connexion à {{host}} impossible",
+    "retry": "Réessayer"
   },
   "hostKey": {
     "presented": "Clé présentée par le serveur",
@@ -96,8 +119,9 @@
       "explanation": "Quelqu'un tente peut-être d'intercepter la connexion (attaque de l'homme du milieu). Il peut aussi s'agir d'un serveur réinstallé ou de clés régénérées. Aucun identifiant n'a été envoyé.",
       "known": "Clé enregistrée",
       "unblockTitle": "Si le changement est légitime",
-      "unblock": "Vérifiez la nouvelle empreinte auprès de l'administrateur du serveur, puis supprimez la ligne commençant par {{host}} dans le fichier ci-dessous. La gestion des clés d'hôte arrivera dans l'interface à l'étape 2.",
-      "close": "Fermer l'onglet"
+      "unblock": "Vérifiez la nouvelle empreinte auprès de l'administrateur du serveur. Ensuite seulement, supprimez l'ancienne clé de {{host}} dans Clés > Clés d'hôte connues, puis reconnectez-vous pour accepter la nouvelle.",
+      "close": "Fermer l'onglet",
+      "manage": "Gérer les clés d'hôte"
     },
     "unreadable": "(clé enregistrée illisible)"
   },
@@ -146,7 +170,8 @@
       "moveTabRight": "Déplacer l'onglet à droite",
       "search": "Rechercher dans le terminal",
       "copy": "Copier la sélection",
-      "paste": "Coller"
+      "paste": "Coller",
+      "lock": "Verrouiller le coffre"
     }
   },
   "errors": {
@@ -199,6 +224,167 @@
       "missing_fields": "Renseignez l'hôte et l'utilisateur.",
       "missing_password": "Saisissez le mot de passe.",
       "missing_key": "Choisissez un fichier de clé privée."
+    },
+    "vault": {
+      "not_found": "Aucun coffre n'existe encore : créez-le.",
+      "already_exists": "Un coffre existe déjà : il ne sera pas écrasé.",
+      "locked": "Le coffre est verrouillé. Déverrouillez-le pour continuer.",
+      "wrong_password_or_corrupted": "Mot de passe incorrect ou coffre endommagé.",
+      "invalid_file": "Le fichier du coffre est illisible ou endommagé.",
+      "unsupported_version": "Ce coffre a été créé par une version plus récente de Younji.",
+      "kdf_params_rejected": "Les paramètres de chiffrement de ce coffre sont refusés (fichier modifié ?).",
+      "io": "Le fichier du coffre n'a pas pu être lu ou écrit. Vérifiez l'espace disque et les droits.",
+      "random_unavailable": "Le générateur aléatoire du système est indisponible.",
+      "password_too_short": "Le mot de passe maître doit contenir au moins 12 caractères.",
+      "password_too_weak": "Ce mot de passe maître est trop facile à deviner. Allongez-le, par exemple avec plusieurs mots sans lien entre eux.",
+      "invalid_name": "Nom invalide : 1 à 128 caractères, sans caractère de contrôle.",
+      "invalid_address": "Adresse invalide.",
+      "invalid_port": "Le port doit être compris entre 1 et 65535.",
+      "invalid_username": "Nom d'utilisateur invalide (obligatoire si aucune identité n'est choisie).",
+      "invalid_tags": "Étiquettes invalides : 16 au plus, 32 caractères chacune.",
+      "invalid_notes": "Notes invalides : 4096 caractères au plus.",
+      "invalid_secret": "Le mot de passe est vide ou trop long.",
+      "identity_incomplete": "Une identité doit avoir un mot de passe, une clé, ou les deux.",
+      "invalid_auto_lock": "Délai de verrouillage non proposé.",
+      "too_many_entries": "Nombre maximal d'entrées atteint.",
+      "entry_not_found": "Cet élément n'existe plus.",
+      "key_in_use": "Cette clé est utilisée par une identité : retirez-la d'abord de l'identité.",
+      "identity_in_use": "Cette identité est utilisée par un hôte : changez d'abord l'identité de l'hôte.",
+      "known_hosts_too_large": "Trop de clés d'hôte enregistrées.",
+      "password_mismatch": "Les deux mots de passe ne sont pas identiques.",
+      "current_password_required": "Saisissez le mot de passe actuel.",
+      "backup_only": "Le coffre est introuvable, mais sa copie de sauvegarde (vault.younji.bak) existe. Pour ne pas l'écraser, Younji ne crée pas de nouveau coffre : renommez vault.younji.bak en vault.younji dans le dossier de données, puis relancez."
+    },
+    "book": {
+      "no_identity": "Cet hôte n'a pas d'identité enregistrée."
+    },
+    "settings": {
+      "invalid": "Paramètre invalide.",
+      "io": "Les paramètres n'ont pas pu être enregistrés."
+    },
+    "keys": {
+      "copy_failed": "La copie dans le presse-papiers a échoué."
     }
+  },
+  "vault": {
+    "loading": "Ouverture du coffre…",
+    "lock": "Verrouiller",
+    "create": {
+      "title": "Créer votre coffre",
+      "intro": "Younji chiffre vos hôtes, identités, clés et clés d'hôte connues dans un coffre protégé par un mot de passe maître. Il vous sera demandé à chaque lancement.",
+      "noRecovery": "Ce mot de passe ne peut pas être récupéré : si vous l'oubliez, le contenu du coffre est perdu. Notez-le dans un endroit sûr (gestionnaire de mots de passe, papier rangé en lieu sûr).",
+      "password": "Mot de passe maître",
+      "confirm": "Confirmer le mot de passe",
+      "submit": "Créer le coffre",
+      "creating": "Chiffrement en cours…"
+    },
+    "unlock": {
+      "title": "Coffre verrouillé",
+      "password": "Mot de passe maître",
+      "submit": "Déverrouiller",
+      "unlocking": "Déverrouillage…",
+      "reason": {
+        "idle": "Le coffre a été verrouillé après une période d'inactivité. Les sessions ouvertes ont été fermées.",
+        "reload": "Le coffre a été verrouillé au rechargement de l'interface."
+      }
+    },
+    "strength": {
+      "empty": "Au moins {{min}} caractères. Une phrase de plusieurs mots est plus facile à retenir et plus robuste.",
+      "tooShort": "Trop court : au moins {{min}} caractères.",
+      "score0": "Très faible : facile à deviner.",
+      "score1": "Faible : facile à deviner.",
+      "score2": "Moyen : encore trop facile à deviner.",
+      "score3": "Robuste.",
+      "score4": "Très robuste."
+    }
+  },
+  "hosts": {
+    "groups": "Groupes",
+    "allHosts": "Tous les hôtes",
+    "ungrouped": "Sans groupe",
+    "newGroup": "Nouveau groupe",
+    "renameGroup": "Renommer le groupe",
+    "groupName": "Nom du groupe",
+    "deleteGroupTitle": "Supprimer le groupe ?",
+    "deleteGroupMessage": "Le groupe « {{name}} » sera supprimé. Ses hôtes sont conservés, sans groupe.",
+    "search": "Rechercher un hôte",
+    "list": "Hôtes",
+    "quickConnect": "Connexion rapide",
+    "newHost": "Nouvel hôte",
+    "empty": "Votre carnet est vide. Ajoutez un hôte pour vous y connecter en un double-clic.",
+    "noMatch": "Aucun hôte ne correspond.",
+    "doubleClickHint": "Double-clic ou Entrée pour se connecter",
+    "connect": "Se connecter",
+    "connectTo": "Se connecter à {{name}}",
+    "editHost": "Modifier {{name}}",
+    "deleteHost": "Supprimer {{name}}",
+    "deleteHostTitle": "Supprimer l'hôte ?",
+    "deleteHostMessage": "L'hôte « {{name}} » sera supprimé du carnet. Ses clés d'hôte connues et son identité sont conservées.",
+    "form": {
+      "newTitle": "Nouvel hôte",
+      "editTitle": "Modifier l'hôte",
+      "name": "Nom",
+      "namePlaceholder": "Par défaut, l'adresse",
+      "address": "Adresse",
+      "identity": "Identité",
+      "noIdentity": "Aucune (demander à la connexion)",
+      "usernameFromIdentity": "Celui de l'identité",
+      "noIdentityHint": "Sans identité, le mot de passe ou la clé est demandé à chaque connexion.",
+      "group": "Groupe",
+      "tags": "Étiquettes",
+      "tagsPlaceholder": "prod, web, lab (séparées par des virgules)",
+      "notes": "Notes"
+    }
+  },
+  "keys": {
+    "title": "Clés privées",
+    "empty": "Aucune clé importée. Importez une clé existante pour l'utiliser dans une identité.",
+    "name": "Nom",
+    "copyPublic": "Copier la clé publique",
+    "copyPublicFor": "Copier la clé publique de {{name}}",
+    "copied": "Copiée",
+    "rename": "Renommer {{name}}",
+    "renameTitle": "Renommer la clé",
+    "delete": "Supprimer {{name}}",
+    "deleteTitle": "Supprimer la clé ?",
+    "deleteMessage": "La clé « {{name}} » sera effacée du coffre. Le fichier d'origine sur le disque n'est pas touché.",
+    "import": {
+      "button": "Importer une clé",
+      "title": "Importer une clé privée",
+      "intro": "La clé est déchiffrée une seule fois avec sa passphrase, puis stockée dans le coffre, qui la protège. Le fichier d'origine n'est ni modifié ni supprimé.",
+      "passphraseHint": "Laissez vide si la clé n'est pas protégée. La passphrase n'est pas conservée.",
+      "submit": "Importer"
+    }
+  },
+  "identities": {
+    "title": "Identités",
+    "empty": "Aucune identité. Une identité regroupe un utilisateur et un mot de passe et/ou une clé, réutilisables sur plusieurs hôtes.",
+    "new": "Nouvelle identité",
+    "newTitle": "Nouvelle identité",
+    "editTitle": "Modifier l'identité",
+    "intro": "Avec une clé et un mot de passe, la clé est essayée d'abord, le mot de passe ensuite si le serveur refuse la clé.",
+    "name": "Nom",
+    "key": "Clé",
+    "noKey": "Aucune",
+    "newPassword": "Nouveau mot de passe",
+    "passwordHint": "Facultatif si une clé est choisie.",
+    "passwordKeptHint": "Laissez vide pour garder le mot de passe enregistré (il n'est jamais affiché).",
+    "removePassword": "Retirer le mot de passe enregistré",
+    "withKey": "clé {{name}}",
+    "withPassword": "mot de passe",
+    "edit": "Modifier {{name}}",
+    "delete": "Supprimer {{name}}",
+    "deleteTitle": "Supprimer l'identité ?",
+    "deleteMessage": "L'identité « {{name}} » et son mot de passe seront effacés du coffre."
+  },
+  "knownHosts": {
+    "title": "Clés d'hôte connues",
+    "intro": "Clés acceptées à la première connexion. Si la clé d'un serveur change, la connexion est bloquée tant que l'ancienne clé n'a pas été supprimée ici.",
+    "empty": "Aucune clé d'hôte enregistrée.",
+    "revoked": "révoquée",
+    "delete": "Supprimer la clé de {{host}}",
+    "deleteTitle": "Supprimer cette clé d'hôte ?",
+    "deleteMessage": "Hôte : {{host}}\nEmpreinte : {{fingerprint}}\n\nNe supprimez cette clé que si vous avez vérifié auprès de l'administrateur que le changement est légitime (serveur réinstallé, clés régénérées). À la prochaine connexion, la nouvelle clé vous sera présentée et devra être acceptée.",
+    "deleteConfirm": "Supprimer la clé"
   }
 }
