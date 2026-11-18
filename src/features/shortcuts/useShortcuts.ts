@@ -73,6 +73,13 @@ export function useShortcuts() {
             void terminal.copySelection().catch(() => undefined);
           }
           break;
+        case 'sftpPanel':
+          // Panneau SFTP à côté du terminal (SFTP-01).
+          if (tab?.kind === 'terminal') {
+            handled();
+            sessions.update(tab.id, { sftpPanelOpen: !tab.sftpPanelOpen });
+          }
+          break;
         case 'lock':
           // Verrouillage (VLT-03, APP-04) : prioritaire, même depuis le terminal.
           handled();

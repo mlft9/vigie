@@ -15,6 +15,7 @@ export const SHORTCUT_ACTIONS = [
   'search',
   'copy',
   'paste',
+  'sftpPanel',
   'lock',
 ] as const;
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
@@ -44,6 +45,7 @@ export const SHORTCUTS: readonly ShortcutDefinition[] = [
   { action: 'search', key: 'F', shift: true },
   { action: 'copy', key: 'C', shift: true },
   { action: 'paste', key: 'V', shift: true },
+  { action: 'sftpPanel', key: 'E', shift: true },
   { action: 'lock', key: 'L', shift: true },
 ];
 

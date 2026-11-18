@@ -174,7 +174,8 @@
       "search": "Search the terminal",
       "copy": "Copy selection",
       "paste": "Paste",
-      "lock": "Lock the vault"
+      "lock": "Lock the vault",
+      "sftpPanel": "SFTP panel"
     }
   },
   "errors": {
@@ -229,7 +230,24 @@
       "invalid_answers": "Invalid answers (too long or wrong number).",
       "key_generation_failed": "Key generation failed.",
       "invalid_public_key": "This public key cannot be deployed.",
-      "deploy_failed": "Deployment failed on the server. It requires a Unix server (sh shell) and a writable home directory."
+      "deploy_failed": "Deployment failed on the server. It requires a Unix server (sh shell) and a writable home directory.",
+      "sftp_unavailable": "The server does not accept SFTP on this connection (subsystem disabled?).",
+      "sftp_failed": "The operation failed on the server.",
+      "sftp_not_found": "File or folder not found on the server.",
+      "sftp_permission_denied": "Permission denied by the server.",
+      "sftp_already_exists": "An item with this name already exists.",
+      "sftp_not_directory": "This is not a folder.",
+      "sftp_not_file": "This is not a regular file.",
+      "sftp_invalid_path": "Invalid remote path: it must start with “/”.",
+      "sftp_invalid_mode": "Invalid permissions: enter 3 or 4 digits from 0 to 7 (for example 644).",
+      "sftp_unsafe_name": "File name refused: it could write outside the chosen folder or target a reserved file.",
+      "sftp_too_many_entries": "Too many items or tree too deep: operation refused.",
+      "local_io": "Cannot read or write on this computer (permissions, disk full?).",
+      "local_outside_root": "Local path refused: it leaves the chosen folder.",
+      "transfer_cancelled": "Transfer cancelled.",
+      "transfer_not_found": "This transfer has finished.",
+      "edit_too_large": "File too large to edit (16 MiB at most).",
+      "edit_conflict": "The file was modified on the server since it was opened: save not uploaded."
     },
     "connect": {
       "missing_fields": "Enter the host and the user.",
@@ -276,6 +294,18 @@
     "keys": {
       "copy_failed": "Copying to the clipboard failed.",
       "export_failed": "The file could not be saved."
+    },
+    "sftp": {
+      "not_found": "The SFTP browser is closed (session ended?).",
+      "too_many": "Too many SFTP browsers open.",
+      "edit_not_found": "This edit has ended.",
+      "too_many_edits": "Too many files open for editing (16 at most)."
+    },
+    "local": {
+      "root_unknown": "Unknown local folder: choose it again."
+    },
+    "editor": {
+      "open_failed": "The text editor could not be started."
     }
   },
   "vault": {
@@ -441,5 +471,97 @@
     "answer": "Answer {{number}}",
     "warning": "Younji will never ask for your master password here. Only enter what this server expects (remote account password, verification code…).",
     "submit": "Submit"
+  },
+  "sftp": {
+    "panel": "SFTP panel",
+    "openPanel": "Open the SFTP panel",
+    "openPanelShortcut": "SFTP panel (Ctrl+Shift+E)",
+    "closePanel": "Close the SFTP panel",
+    "openDual": "Open in dual pane",
+    "tabTitle": "SFTP · {{title}}",
+    "follow": "Follow the terminal",
+    "enableFollow": "Enable following",
+    "integrationHint": "Sends the shell (bash or zsh) a command that reports the current directory at each prompt (OSC 7). No data is added to it.",
+    "notConnected": "The panel opens once the session is connected.",
+    "opening": "Opening SFTP…",
+    "parentClosed": "The terminal session used by this tab is closed. Reconnect it, then reopen the browser.",
+    "localPane": "Local files",
+    "remotePane": "Remote files",
+    "sectionIntro": "The SFTP browser uses the connection of an open terminal session: no new authentication, same verified host key.",
+    "noSession": "No connected session. Open a session from Hosts or a new tab first.",
+    "remoteToolbar": "Remote file actions",
+    "localToolbar": "Local file actions",
+    "remoteFiles": "Remote files",
+    "localFiles": "Local files",
+    "remotePath": "Remote path",
+    "up": "Parent folder",
+    "home": "Home folder",
+    "uploadFiles": "Upload files…",
+    "uploadFolder": "Upload a folder…",
+    "download": "Download…",
+    "downloadHere": "Download to the local folder",
+    "newFolder": "New folder",
+    "edit": "Open in editor",
+    "chmod": "Permissions (chmod)",
+    "name": "Name",
+    "empty": "Empty folder.",
+    "truncated": "Very large folder: only the first 10,000 entries are shown.",
+    "suspicious": "Unusual name (invisible or reserved characters): it will be refused when downloading.",
+    "pickLocal": "Choose a local folder…",
+    "noLocal": "No local folder chosen",
+    "localHint": "Choose a folder on your computer: Younji will only be able to read and write inside it.",
+    "deleteTitle_one": "Delete this item?",
+    "deleteTitle_other": "Delete these {{count}} items?",
+    "deleteMessage": "Permanent deletion on the server: {{names}}.",
+    "deleteRecursive": "Permanent deletion on the server, including folder contents (symbolic links are deleted, not their target): {{names}}.",
+    "chmodTitle": "Permissions of {{name}}",
+    "octal": "Octal value",
+    "perm": {
+      "read": "Read",
+      "write": "Write",
+      "exec": "Execute",
+      "owner": "Owner",
+      "group": "Group",
+      "others": "Others"
+    },
+    "conflictTitle": "Item already exists",
+    "conflictLocal": "“{{name}}” already exists in the local destination folder.",
+    "conflictRemote": "“{{name}}” already exists on the server.",
+    "applyToAll": "Apply to the next conflicts of this transfer",
+    "skip": "Skip",
+    "keepBoth": "Keep both",
+    "overwrite": "Overwrite",
+    "cancelTransfer": "Cancel transfer",
+    "transfers": "Transfers",
+    "clearFinished": "Clear finished",
+    "labelMore": "{{name}} and {{count}} more",
+    "progressLabel": "Progress of {{name}}",
+    "progress": "{{done}} of {{total}} · files {{files}}/{{filesTotal}}",
+    "status": {
+      "queued": "Queued",
+      "running": "In progress",
+      "conflict": "Question",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "summary_one": "{{count}} file copied",
+    "summary_other": "{{count}} files copied",
+    "summarySkipped_one": "{{count}} skipped",
+    "summarySkipped_other": "{{count}} skipped",
+    "summaryIgnored_one": "{{count}} link or special file not copied",
+    "summaryIgnored_other": "{{count}} links or special files not copied",
+    "summaryRefused_one": "{{count}} name refused (dangerous)",
+    "summaryRefused_other": "{{count}} names refused (dangerous)",
+    "summaryFailed_one": "{{count}} failure",
+    "summaryFailed_other": "{{count}} failures",
+    "editStatus": {
+      "watching": "Open, waiting for a save",
+      "uploaded": "Saved to the server",
+      "conflict": "Conflict",
+      "failed": "Upload failed"
+    },
+    "editForce": "Upload anyway (overwrites the server's version)",
+    "editStop": "Stop editing (deletes the local copy)"
   }
 }

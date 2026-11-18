@@ -14,13 +14,22 @@ interface NameDialogProps {
   title: string;
   label: string;
   initial: string;
+  /** Longueur maximale (par défaut `MAX_NAME_LENGTH`). */
+  maxLength?: number;
   /** Enregistre le nom ; une erreur du cœur est affichée dans la fenêtre. */
   onSave: (name: string) => Promise<void>;
   onClose: () => void;
 }
 
 /** Saisie d'un nom (groupe, clé). */
-export function NameDialog({ title, label, initial, onSave, onClose }: NameDialogProps) {
+export function NameDialog({
+  title,
+  label,
+  initial,
+  maxLength = MAX_NAME_LENGTH,
+  onSave,
+  onClose,
+}: NameDialogProps) {
   const { t } = useTranslation();
   const id = useId();
   const [name, setName] = useState(initial);
@@ -61,7 +70,7 @@ export function NameDialog({ title, label, initial, onSave, onClose }: NameDialo
             onChange={(e) => {
               setName(e.target.value);
             }}
-            maxLength={MAX_NAME_LENGTH}
+            maxLength={maxLength}
             autoComplete="off"
             data-autofocus
           />

@@ -4,7 +4,9 @@ import type { SessionEvent } from '@/lib/types';
 import { type ConnectTarget, HOME_TAB_ID, useSessions } from '@/stores/sessions';
 import { useSettings } from '@/stores/settings';
 
-import { closeAllTabs, terminalSession, TerminalSession } from './TerminalSession';
+import { SHELL_INTEGRATION } from '@/features/sftp/osc7';
+
+import { closeAllTabs, closeTab, terminalSession, TerminalSession } from './TerminalSession';
 
 /** Accès au double de xterm, dont les méthodes sont des fonctions simulées. */
 function fake(session: TerminalSession) {
@@ -12,6 +14,7 @@ function fake(session: TerminalSession) {
     paste: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     written: Uint8Array[];
+    osc: Map<number, (data: string) => boolean>;
   };
 }
 
@@ -34,6 +37,14 @@ vi.mock('@xterm/xterm', () => {
     onData = vi.fn();
     onBinary = vi.fn();
     onResize = vi.fn();
+    /** Gestionnaires OSC enregistrés, par identifiant (OSC 7 : dossier courant). */
+    osc = new Map<number, (data: string) => boolean>();
+    parser = {
+      registerOscHandler: (id: number, handler: (data: string) => boolean) => {
+        this.osc.set(id, handler);
+        return { dispose: vi.fn() };
+      },
+    };
     write(data: Uint8Array, callback?: () => void) {
       this.written.push(data);
       callback?.();
@@ -348,5 +359,36 @@ describe('TerminalSession', () => {
     expect(terminalSession(first)).not.toBe(a);
     closeAllTabs();
     await Promise.resolve();
+  });
+
+  it('suit le dossier courant annoncé par OSC 7 et ignore une séquence invalide', async () => {
+    const { session, emit, tab } = await connected();
+    emit({ type: 'connected' });
+    const osc7 = fake(session).osc.get(7);
+    expect(osc7).toBeDefined();
+    osc7?.('file://srv/home/al%20ice/%C3%A9t%C3%A9');
+    expect(tab()?.remoteCwd).toBe('/home/al ice/été');
+    osc7?.('file://srv/tmp/%0Apiege');
+    osc7?.('http://srv/autre');
+    expect(tab()?.remoteCwd).toBe('/home/al ice/été');
+    expect(tab()?.sessionId).toBe(7);
+  });
+
+  it('envoie l’intégration au prompt uniquement sur demande, en texte constant', async () => {
+    const { session, emit } = await connected();
+    emit({ type: 'connected' });
+    expect(ipc.sshWrite).not.toHaveBeenCalled();
+    session.sendShellIntegration();
+    await vi.waitFor(() => {
+      expect(ipc.sshWrite).toHaveBeenCalledWith(7, SHELL_INTEGRATION, false);
+    });
+  });
+
+  it('ferme les onglets SFTP avec leur terminal', async () => {
+    const { tabId } = await connected();
+    const child = useSessions.getState().openSftpTab(tabId);
+    expect(child).not.toBeNull();
+    closeTab(tabId);
+    expect(useSessions.getState().tabs).toEqual([]);
   });
 });

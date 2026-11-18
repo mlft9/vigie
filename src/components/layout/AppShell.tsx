@@ -1,6 +1,8 @@
 import { HostsView } from '@/features/hosts/HostsView';
 import { KeysView } from '@/features/keys/KeysView';
 import { SettingsView } from '@/features/settings/SettingsView';
+import { SftpSectionView } from '@/features/sftp/SftpSectionView';
+import { SftpTabPanel } from '@/features/sftp/SftpTabPanel';
 import { useShortcuts } from '@/features/shortcuts/useShortcuts';
 import { SessionPanel } from '@/features/terminal/SessionPanel';
 import { cn } from '@/lib/utils';
@@ -34,14 +36,19 @@ export function AppShell() {
           {section === 'settings' && <SettingsView />}
           {section === 'hosts' && <HostsView />}
           {section === 'keys' && <KeysView />}
-          {section !== 'settings' && section !== 'hosts' && section !== 'keys' && (
+          {section === 'sftp' && <SftpSectionView />}
+          {(section === 'snippets' || section === 'tunnels') && (
             <SectionPlaceholder section={section} />
           )}
         </main>
         {/* Les sessions restent montées quand leur onglet est masqué : le terminal garde son tampon. */}
-        {tabs.map((tab) => (
-          <SessionPanel key={tab.id} tab={tab} active={tab.id === activeTabId} />
-        ))}
+        {tabs.map((tab) =>
+          tab.kind === 'sftp' ? (
+            <SftpTabPanel key={tab.id} tab={tab} active={tab.id === activeTabId} />
+          ) : (
+            <SessionPanel key={tab.id} tab={tab} active={tab.id === activeTabId} />
+          ),
+        )}
       </div>
     </div>
   );

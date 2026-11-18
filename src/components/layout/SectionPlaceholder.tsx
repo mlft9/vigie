@@ -2,13 +2,12 @@ import { useTranslation } from 'react-i18next';
 
 import type { Section } from '@/stores/ui';
 
-type PlaceholderSection = Exclude<Section, 'settings' | 'hosts' | 'keys'>;
+type PlaceholderSection = Exclude<Section, 'settings' | 'hosts' | 'keys' | 'sftp'>;
 
 /** Étape de la feuille de route où chaque section devient fonctionnelle. */
 const STEP_BY_SECTION: Record<PlaceholderSection, number> = {
   snippets: 5,
   tunnels: 6,
-  sftp: 4,
 };
 
 /** Contenu provisoire d'une section pas encore implémentée. */

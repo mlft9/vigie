@@ -48,8 +48,14 @@ export interface HostKeyChange {
   hostPattern: string;
 }
 
+/** `terminal` : session SSH avec terminal ; `sftp` : explorateur double panneau (SFTP-02). */
+export type TabKind = 'terminal' | 'sftp';
+
 export interface SessionTab {
   id: string;
+  kind: TabKind;
+  /** Onglet de terminal dont un onglet SFTP utilise la connexion. */
+  parentTabId: string | null;
   customTitle: string | null;
   /** Dernière cible tentée, pour pré-remplir le formulaire de reconnexion. */
   target: ConnectTarget | null;
@@ -64,6 +70,12 @@ export interface SessionTab {
   pendingPrompt: AuthPromptInfo | null;
   /** Barre de recherche du terminal ouverte. */
   searchOpen: boolean;
+  /** Identifiant de la session du cœur (opaque, sans secret), tant qu'elle est ouverte. */
+  sessionId: number | null;
+  /** Dossier courant du shell annoncé par OSC 7 (donnée du serveur, non fiable). */
+  remoteCwd: string | null;
+  /** Panneau SFTP latéral ouvert (onglet de terminal). */
+  sftpPanelOpen: boolean;
 }
 
 interface SessionsState {
@@ -71,6 +83,11 @@ interface SessionsState {
   activeTabId: string;
   /** Ouvre un onglet de connexion et l'active. Renvoie son identifiant. */
   openTab: () => string;
+  /**
+   * Ouvre un onglet SFTP double panneau sur la connexion d'un onglet de terminal et l'active.
+   * Renvoie son identifiant, ou `null` si l'onglet parent n'existe pas.
+   */
+  openSftpTab: (parentTabId: string) => string | null;
   /** Retire un onglet (la session doit avoir été fermée par l'appelant). */
   removeTab: (id: string) => void;
   activate: (id: string) => void;
@@ -99,6 +116,8 @@ export const useSessions = create<SessionsState>()((set, get) => ({
     const id = newTabId();
     const tab: SessionTab = {
       id,
+      kind: 'terminal',
+      parentTabId: null,
       customTitle: null,
       target: null,
       status: 'form',
@@ -107,8 +126,42 @@ export const useSessions = create<SessionsState>()((set, get) => ({
       hostKeyChange: null,
       pendingPrompt: null,
       searchOpen: false,
+      sessionId: null,
+      remoteCwd: null,
+      sftpPanelOpen: false,
     };
     set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id }));
+    return id;
+  },
+
+  openSftpTab: (parentTabId) => {
+    const parent = get().tabs.find((t) => t.id === parentTabId && t.kind === 'terminal');
+    if (!parent) return null;
+    const id = newTabId();
+    const tab: SessionTab = {
+      id,
+      kind: 'sftp',
+      parentTabId,
+      customTitle: null,
+      target: parent.target,
+      status: 'connected',
+      errorCode: null,
+      pendingHostKey: null,
+      hostKeyChange: null,
+      pendingPrompt: null,
+      searchOpen: false,
+      sessionId: null,
+      remoteCwd: parent.remoteCwd,
+      sftpPanelOpen: false,
+    };
+    set((s) => {
+      // Placé juste après le terminal (et ses autres onglets SFTP).
+      let index = s.tabs.findIndex((t) => t.id === parentTabId);
+      while (s.tabs[index + 1]?.parentTabId === parentTabId) index += 1;
+      const tabs = [...s.tabs];
+      tabs.splice(index + 1, 0, tab);
+      return { tabs, activeTabId: id };
+    });
     return id;
   },
 

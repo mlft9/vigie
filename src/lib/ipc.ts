@@ -6,7 +6,11 @@ import type {
   AppError,
   AppInfo,
   AppSettings,
+  ConflictAction,
+  ConflictPolicy,
   ConnectRequest,
+  DownloadTarget,
+  EditId,
   EntryId,
   HostRequest,
   IdentityRequest,
@@ -16,9 +20,17 @@ import type {
   KeyGenerateRequest,
   KeyImportRequest,
   KnownHostEntry,
+  JobId,
+  LocalListing,
+  LocalRootId,
+  LocalRootRef,
+  RemoteListing,
   SessionEvent,
   SessionId,
   SettingsResponse,
+  SftpEvent,
+  SftpId,
+  UploadSource,
   VaultEvent,
   VaultSnapshot,
   VaultStatus,
@@ -280,4 +292,109 @@ export function settingsGet(): Promise<SettingsResponse> {
 /** Enregistre les paramètres d'apparence. */
 export function settingsSet(settings: AppSettings): Promise<void> {
   return call<undefined>('settings_set', { settings });
+}
+
+// ---------------------------------------------------------------------- SFTP (étape 4)
+
+/**
+ * Ouvre un client SFTP sur la connexion d'une session de terminal (sans nouvelle
+ * authentification). Les transferts et éditions de ce client émettent sur `onEvent`.
+ */
+export async function sftpOpen(
+  sessionId: SessionId,
+  onEvent: (event: SftpEvent) => void,
+): Promise<SftpId> {
+  return call<SftpId>('sftp_open', { sessionId, onEvent: new Channel<SftpEvent>(onEvent) });
+}
+
+export function sftpClose(sftpId: SftpId): Promise<void> {
+  return call<undefined>('sftp_close', { sftpId });
+}
+
+/** Dossier personnel de l'utilisateur distant. */
+export function sftpHome(sftpId: SftpId): Promise<string> {
+  return call<string>('sftp_home', { sftpId });
+}
+
+export function sftpList(sftpId: SftpId, path: string): Promise<RemoteListing> {
+  return call<RemoteListing>('sftp_list', { sftpId, path });
+}
+
+export function sftpMkdir(sftpId: SftpId, path: string): Promise<void> {
+  return call<undefined>('sftp_mkdir', { sftpId, path });
+}
+
+/** Renomme sans jamais écraser (la destination ne doit pas exister). */
+export function sftpRename(sftpId: SftpId, from: string, to: string): Promise<void> {
+  return call<undefined>('sftp_rename', { sftpId, from, to });
+}
+
+/** Supprime un élément (récursif pour un dossier, sans suivre les liens). */
+export function sftpRemove(sftpId: SftpId, path: string): Promise<void> {
+  return call<undefined>('sftp_remove', { sftpId, path });
+}
+
+export function sftpChmod(sftpId: SftpId, path: string, mode: number): Promise<void> {
+  return call<undefined>('sftp_chmod', { sftpId, path, mode });
+}
+
+/** Ajoute un téléchargement à la file ; `null` si la boîte de dialogue a été annulée. */
+export function sftpDownload(
+  sftpId: SftpId,
+  paths: string[],
+  target: DownloadTarget,
+  policy: ConflictPolicy = 'ask',
+): Promise<JobId | null> {
+  return call<JobId | null>('sftp_download', { sftpId, paths, target, policy });
+}
+
+/** Ajoute un envoi à la file ; `null` si la boîte de dialogue a été annulée. */
+export function sftpUpload(
+  sftpId: SftpId,
+  source: UploadSource,
+  remoteDir: string,
+  policy: ConflictPolicy = 'ask',
+): Promise<JobId | null> {
+  return call<JobId | null>('sftp_upload', { sftpId, source, remoteDir, policy });
+}
+
+export function sftpTransferCancel(sftpId: SftpId, job: JobId): Promise<void> {
+  return call<undefined>('sftp_transfer_cancel', { sftpId, job });
+}
+
+export function sftpConflictDecision(
+  sftpId: SftpId,
+  job: JobId,
+  action: ConflictAction,
+  applyToAll: boolean,
+): Promise<void> {
+  return call<undefined>('sftp_conflict_decision', { sftpId, job, action, applyToAll });
+}
+
+/** Ouvre le fichier dans l'éditeur de texte local ; chaque enregistrement est renvoyé. */
+export async function sftpEdit(
+  sftpId: SftpId,
+  path: string,
+  onEvent: (event: SftpEvent) => void,
+): Promise<EditId> {
+  return call<EditId>('sftp_edit', { sftpId, path, onEvent: new Channel<SftpEvent>(onEvent) });
+}
+
+export function sftpEditClose(editId: EditId): Promise<void> {
+  return call<undefined>('sftp_edit_close', { editId });
+}
+
+/** Renvoie la copie locale malgré un conflit (écrase le fichier distant). */
+export function sftpEditForce(editId: EditId): Promise<void> {
+  return call<undefined>('sftp_edit_force', { editId });
+}
+
+/** Choisit un dossier local dans la boîte de dialogue du cœur ; `null` si annulé. */
+export function localPickRoot(): Promise<LocalRootRef | null> {
+  return call<LocalRootRef | null>('local_pick_root');
+}
+
+/** Liste un dossier (chemin relatif, `/` comme séparateur) d'un dossier local choisi. */
+export function localList(rootId: LocalRootId, path: string): Promise<LocalListing> {
+  return call<LocalListing>('local_list', { rootId, path });
 }
