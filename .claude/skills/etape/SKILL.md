@@ -49,7 +49,7 @@ Commite-le (`docs(plan): planifie l'étape $0`), puis enchaîne directement sur 
 4. Commite les corrections et la documentation. Vérifie une dernière fois que `npm run check` passe.
 
 ## 6. Livrer au porteur, puis s'arrêter
-- Pousse la branche (`git push -u origin etape/$0-<slug>`) et ouvre une PR vers `main` (ou vers la branche de base choisie) avec `gh pr create`. **Ne la fusionne pas.**
+- Pousse la branche (`git push -u origin etape/$0-<slug>`) et ouvre une PR vers `main` (ou vers la branche de base choisie) avec `gh pr create`. Si `gh` n'est pas installé, donne le lien de création de PR affiché par `git push` (`https://github.com/<dépôt>/pull/new/<branche>`). **Ne la fusionne pas.**
 - Présente, en français et de façon concise :
   - Ce qui a été fait (5 à 8 puces au maximum) et les choix de sécurité notables.
   - **Décisions prises en autonomie** : chaque choix qui serait normalement revenu au porteur, l'option retenue et comment revenir dessus.
