@@ -24,8 +24,7 @@
   "sections": {
     "comingSoon": "This section will arrive in step {{step}} of the roadmap.",
     "snippets": "Your reusable commands will appear here.",
-    "tunnels": "Your SSH tunnels will appear here.",
-    "sftp": "The remote file browser will appear here."
+    "tunnels": "Your SSH tunnels will appear here."
   },
   "settings": {
     "title": "Settings",

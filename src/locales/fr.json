@@ -24,8 +24,7 @@
   "sections": {
     "comingSoon": "Cette section arrivera à l'étape {{step}} de la feuille de route.",
     "snippets": "Vos commandes réutilisables apparaîtront ici.",
-    "tunnels": "Vos tunnels SSH apparaîtront ici.",
-    "sftp": "L'explorateur de fichiers distant apparaîtra ici."
+    "tunnels": "Vos tunnels SSH apparaîtront ici."
   },
   "settings": {
     "title": "Paramètres",
