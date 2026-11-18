@@ -31,6 +31,7 @@ use crate::config::{Timeouts, client_config};
 use crate::deploy::{self, AuthorizedKeyLine, DeployOutcome};
 use crate::known_hosts::{HostKeyStatus, KeyInfo, KnownHosts};
 use crate::prompt::{AuthPrompt, MAX_PROMPT_ROUNDS, PromptAnswers};
+use crate::sftp::SftpClient;
 use crate::{SshError, Target, TermSize};
 
 /// Type de terminal annoncé au serveur.
@@ -138,7 +139,12 @@ enum Purpose {
 enum Control {
     Input(Vec<u8>),
     Resize(TermSize),
+    /// Ouvre un client SFTP sur la connexion de la session (SFTP-01).
+    OpenSftp(oneshot::Sender<Result<SftpClient, SshError>>),
 }
+
+/// Délai d'ouverture d'un client SFTP (deux canaux et initialisation du protocole).
+const SFTP_OPEN_TIMEOUT: Duration = Duration::from_secs(45);
 
 type DecisionSlot = Arc<Mutex<Option<oneshot::Sender<bool>>>>;
 
@@ -288,6 +294,22 @@ impl SessionHandle {
             .send(Control::Resize(size))
             .await
             .map_err(|_| SshError::SessionClosed)
+    }
+
+    /// Ouvre un client SFTP sur la connexion de cette session, sans nouvelle authentification
+    /// (même clé d'hôte vérifiée). La session doit être un terminal ouvert. Le client vit
+    /// avec la session : il cesse de fonctionner quand elle se ferme.
+    pub async fn open_sftp(&self) -> Result<SftpClient, SshError> {
+        let (sender, receiver) = oneshot::channel();
+        self.control
+            .send(Control::OpenSftp(sender))
+            .await
+            .map_err(|_| SshError::SessionClosed)?;
+        match timeout(SFTP_OPEN_TIMEOUT, receiver).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(SshError::SessionClosed),
+            Err(_) => Err(SshError::Timeout),
+        }
     }
 
     /// Acquitte des octets de sortie affichés par l'appelant.
@@ -447,14 +469,17 @@ impl SessionTask {
     async fn drive(&mut self, common: Common, purpose: Purpose) -> SshError {
         let limit = common.timeouts.auth;
         let handle = match self.establish(common).await {
-            Ok(handle) => handle,
+            Ok(handle) => Arc::new(handle),
             Err(reason) => return reason,
         };
         match purpose {
             Purpose::Shell(size) => match timeout(limit, open_shell(&handle, size)).await {
                 Ok(Ok((writer, reader))) => {
                     self.sink.event(SessionEvent::Connected);
-                    self.io_loop(&handle, writer, reader).await
+                    let reason = self.io_loop(&handle, writer, reader).await;
+                    // Fin du terminal : la connexion est fermée, canaux SFTP compris.
+                    let _ = handle.disconnect(Disconnect::ByApplication, "", "").await;
+                    reason
                 }
                 Ok(Err(reason)) => reason,
                 Err(_) => SshError::Timeout,
@@ -670,7 +695,7 @@ impl SessionTask {
     /// Boucle d'entrée/sortie du shell. Renvoie la cause de la fin de session.
     async fn io_loop(
         &mut self,
-        handle: &Handle<ClientHandler>,
+        handle: &Arc<Handle<ClientHandler>>,
         writer: ChannelWriteHalf<client::Msg>,
         mut reader: russh::ChannelReadHalf,
     ) -> SshError {
@@ -703,6 +728,13 @@ impl SessionTask {
                         if writer.window_change(size.cols(), size.rows(), 0, 0).await.is_err() {
                             break SshError::ConnectionLost;
                         }
+                    }
+                    Some(Control::OpenSftp(reply)) => {
+                        // Ouverture dans une tâche à part : le terminal reste fluide.
+                        let handle = handle.clone();
+                        tokio::spawn(async move {
+                            let _ = reply.send(open_sftp(&handle).await);
+                        });
                     }
                     // Le pilote a disparu : on ferme comme une annulation.
                     None => self.cancel.cancel(),
@@ -810,6 +842,27 @@ async fn open_shell(
     channel.request_shell(false).await.map_err(failed)?;
     let (reader, writer) = channel.split();
     Ok((writer, reader))
+}
+
+/// Ouvre deux canaux `sftp` sur la connexion et initialise le client.
+async fn open_sftp(handle: &Handle<ClientHandler>) -> Result<SftpClient, SshError> {
+    let open = || async {
+        let channel = handle.channel_open_session().await.map_err(|error| {
+            tracing::debug!(%error, "ouverture d'un canal SFTP impossible");
+            SshError::SftpUnavailable
+        })?;
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|error| {
+                tracing::debug!(%error, "sous-système SFTP refusé");
+                SshError::SftpUnavailable
+            })?;
+        Ok::<_, SshError>(channel.into_stream())
+    };
+    let meta = open().await?;
+    let files = open().await?;
+    SftpClient::from_streams(meta, files).await
 }
 
 /// Gestionnaire russh : vérification de la clé d'hôte et bannière.

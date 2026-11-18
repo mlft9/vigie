@@ -12,10 +12,12 @@ publish.workspace = true
 # Générateur du système pour la génération de clés (KEY-01) ; `sys_rng` expose `SysRng`.
 getrandom = { version = "0.4.3", features = ["sys_rng"] }
 russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa"] }
+# Protocole SFTP v3 (SFTP-01 à 05) ; Apache-2.0. Travaille sur un flux (canal russh).
+russh-sftp = { version = "3.0.1", default-features = false }
 secrecy = { version = "0.10.3", features = ["serde"] }
 tempfile = "3"
 thiserror.workspace = true
-tokio = { version = "1.54", features = ["rt", "net", "time", "sync", "macros"] }
+tokio = { version = "1.54", features = ["rt", "net", "time", "sync", "macros", "fs", "io-util"] }
 tokio-util = "0.7.20"
 tracing.workspace = true
 zeroize = "1.9"

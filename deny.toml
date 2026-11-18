@@ -18,6 +18,12 @@ ignore = [
     # gtk-rs, chaîne Linux de Tauri) : aucun code embarqué dans l'application. Pas d'alternative
     # tant que Tauri dépend de gtk-rs 0.18.
     { id = "RUSTSEC-2024-0370", reason = "macro de compilation transitive de gtk-rs (Tauri), non maintenue, sans code à l'exécution" },
+    # chrono n'est plus maintenue (avis « unmaintained », aucune vulnérabilité connue).
+    # Dépendance de russh-sftp 3.0.1, qui ne s'en sert que pour fabriquer des attributs côté
+    # serveur (`protocol::File::longname`, `FileAttributes::from(&Metadata)`) : chemins jamais
+    # appelés par le client de Younji (étape 4, ADR-034). À retirer dès que russh-sftp
+    # remplace chrono ; à réexaminer à chaque mise à jour de russh-sftp.
+    { id = "RUSTSEC-2026-0543", reason = "chrono non maintenue, transitive de russh-sftp, code jamais appelé côté client" },
 ]
 
 [licenses]

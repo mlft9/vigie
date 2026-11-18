@@ -1,5 +1,6 @@
 //! Client SSH de Younji (ADR-002, ADR-004) : connexion, authentification, PTY distant et
-//! vérification des clés d'hôte, keyboard-interactive (2FA), génération et déploiement de clés.
+//! vérification des clés d'hôte, keyboard-interactive (2FA), génération et déploiement de clés,
+//! SFTP (opérations, transferts, édition).
 //! Cette crate ne dépend pas de Tauri.
 
 pub mod auth;
@@ -10,6 +11,7 @@ pub mod keygen;
 pub mod known_hosts;
 pub mod prompt;
 mod session;
+pub mod sftp;
 mod target;
 
 pub use auth::{Credentials, ImportedKey};
