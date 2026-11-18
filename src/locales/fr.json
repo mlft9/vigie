@@ -74,7 +74,8 @@
     "refresh": "Actualiser",
     "rename": "Renommer",
     "retry": "Réessayer",
-    "save": "Enregistrer"
+    "save": "Enregistrer",
+    "close": "Fermer"
   },
   "connect": {
     "title": "Connexion rapide",
@@ -86,7 +87,8 @@
     "authMethod": "Authentification",
     "auth": {
       "password": "Mot de passe",
-      "key": "Clé privée"
+      "key": "Clé privée",
+      "interactive": "Questions du serveur (2FA)"
     },
     "password": "Mot de passe",
     "keyFile": "Fichier de clé",
@@ -94,7 +96,8 @@
     "noKey": "Aucune clé sélectionnée",
     "passphrase": "Passphrase",
     "passphraseHint": "Laissez vide si la clé n'est pas protégée.",
-    "submit": "Se connecter"
+    "submit": "Se connecter",
+    "interactiveHint": "Aucun secret n'est saisi ici : le serveur pose ses questions (mot de passe, code de vérification…) dans une fenêtre dédiée."
   },
   "session": {
     "connecting": "Connexion à {{host}}…",
@@ -218,7 +221,15 @@
       "session_ended": "Session terminée.",
       "session_closed": "Session fermée.",
       "session_not_found": "Cette session n'existe plus.",
-      "too_many_sessions": "Trop de sessions ouvertes. Fermez-en avant d'en ouvrir une nouvelle."
+      "too_many_sessions": "Trop de sessions ouvertes. Fermez-en avant d'en ouvrir une nouvelle.",
+      "auth_prompt_invalid": "Le serveur a envoyé une demande d'authentification anormale (trop de questions) : connexion interrompue.",
+      "auth_prompt_timeout": "Pas de réponse aux questions du serveur dans le délai imparti.",
+      "auth_cancelled": "Authentification annulée.",
+      "no_pending_prompt": "Le serveur n'attend plus de réponse.",
+      "invalid_answers": "Réponses invalides (trop longues ou en nombre incorrect).",
+      "key_generation_failed": "La génération de la clé a échoué.",
+      "invalid_public_key": "Cette clé publique ne peut pas être déployée.",
+      "deploy_failed": "Le déploiement a échoué sur le serveur. Il faut un serveur Unix (shell sh) et un dossier personnel accessible en écriture."
     },
     "connect": {
       "missing_fields": "Renseignez l'hôte et l'utilisateur.",
@@ -263,7 +274,8 @@
       "io": "Les paramètres n'ont pas pu être enregistrés."
     },
     "keys": {
-      "copy_failed": "La copie dans le presse-papiers a échoué."
+      "copy_failed": "La copie dans le presse-papiers a échoué.",
+      "export_failed": "Le fichier n'a pas pu être enregistré."
     }
   },
   "vault": {
@@ -338,7 +350,7 @@
   },
   "keys": {
     "title": "Clés privées",
-    "empty": "Aucune clé importée. Importez une clé existante pour l'utiliser dans une identité.",
+    "empty": "Aucune clé. Générez une nouvelle clé ou importez une clé existante pour l'utiliser dans une identité.",
     "name": "Nom",
     "copyPublic": "Copier la clé publique",
     "copyPublicFor": "Copier la clé publique de {{name}}",
@@ -354,6 +366,41 @@
       "intro": "La clé est déchiffrée une seule fois avec sa passphrase, puis stockée dans le coffre, qui la protège. Le fichier d'origine n'est ni modifié ni supprimé.",
       "passphraseHint": "Laissez vide si la clé n'est pas protégée. La passphrase n'est pas conservée.",
       "submit": "Importer"
+    },
+    "export": "Exporter la clé publique (.pub)",
+    "exportFor": "Exporter la clé publique de {{name}}",
+    "exported": "Clé publique exportée",
+    "deployFor": "Déployer la clé {{name}} sur un hôte",
+    "kind": {
+      "ed25519": "Ed25519 (recommandé)",
+      "ecdsaP256": "ECDSA P-256",
+      "ecdsaP384": "ECDSA P-384",
+      "ecdsaP521": "ECDSA P-521",
+      "rsa4096": "RSA 4096 bits"
+    },
+    "generate": {
+      "button": "Générer une clé",
+      "title": "Générer une clé",
+      "intro": "La clé est créée dans le coffre et n'en sort jamais : seule la clé publique est affichée, copiable et exportable. Le coffre la protège, une passphrase est donc inutile.",
+      "kind": "Type de clé",
+      "rsaHint": "Compatible avec les serveurs anciens. La génération peut prendre quelques secondes.",
+      "defaultName": "Clé {{kind}}",
+      "submit": "Générer",
+      "busy": "Génération…"
+    },
+    "deploy": {
+      "button": "Déployer sur un hôte",
+      "title": "Déployer « {{name}} »",
+      "intro": "La clé publique est ajoutée à ~/.ssh/authorized_keys sur l'hôte choisi, sans doublon, avec des permissions restrictives (700 pour ~/.ssh, 600 pour le fichier). La connexion utilise l'identité de l'hôte. Serveurs Unix uniquement.",
+      "noHosts": "Aucun hôte dans le carnet. Ajoutez d'abord l'hôte cible.",
+      "host": "Hôte",
+      "passwordHint": "Cet hôte n'a pas d'identité. Saisissez son mot de passe pour ce déploiement, ou laissez vide pour répondre aux questions du serveur.",
+      "submit": "Déployer",
+      "running": "Déploiement sur {{host}}…",
+      "blocked": "La clé d'hôte de {{host}} a changé : déploiement refusé, aucun identifiant n'a été envoyé. Vérifiez la nouvelle empreinte avant de supprimer l'ancienne clé.",
+      "added": "Clé ajoutée sur {{host}}.",
+      "present": "La clé était déjà présente sur {{host}} : rien n’a été modifié.",
+      "nextStep": "Pour vous connecter avec cette clé, choisissez-la dans l'identité utilisée par l'hôte (Clés > Identités)."
     }
   },
   "identities": {
@@ -386,5 +433,13 @@
     "deleteTitle": "Supprimer cette clé d'hôte ?",
     "deleteMessage": "Hôte : {{host}}\nEmpreinte : {{fingerprint}}\n\nNe supprimez cette clé que si vous avez vérifié auprès de l'administrateur que le changement est légitime (serveur réinstallé, clés régénérées). À la prochaine connexion, la nouvelle clé vous sera présentée et devra être acceptée.",
     "deleteConfirm": "Supprimer la clé"
+  },
+  "authPrompt": {
+    "title": "Vérification demandée par le serveur",
+    "intro": "Le serveur {{host}} demande les informations suivantes pour terminer la connexion.",
+    "serverMessage": "Message envoyé par le serveur",
+    "answer": "Réponse {{number}}",
+    "warning": "Younji ne vous demandera jamais votre mot de passe maître ici. Ne saisissez que ce que ce serveur attend (mot de passe du compte distant, code de vérification…).",
+    "submit": "Valider"
   }
 }

@@ -18,6 +18,7 @@ const STATUS_COLOR: Record<TabStatus, string> = {
   connecting: 'bg-amber-500',
   authenticating: 'bg-amber-500',
   hostKey: 'bg-amber-500',
+  authPrompt: 'bg-amber-500',
   connected: 'bg-emerald-500',
   disconnected: 'bg-red-500',
   blocked: 'bg-red-500',

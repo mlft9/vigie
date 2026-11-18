@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { EntryId, HostKeyInfo, KeyFileRef } from '@/lib/types';
+import type { AuthPromptInfo, EntryId, HostKeyInfo, KeyFileRef } from '@/lib/types';
 
 /** Onglet d'accueil (sections de la barre latérale), toujours présent en premier. */
 export const HOME_TAB_ID = 'home';
@@ -13,19 +13,27 @@ export const MAX_TAB_TITLE = 64;
  * - `form` : formulaire de connexion (nouvel onglet, échec avant connexion, reconnexion) ;
  * - `connecting` / `authenticating` : connexion en cours ;
  * - `hostKey` : clé d'hôte inconnue, en attente de la décision de l'utilisateur ;
+ * - `authPrompt` : le serveur pose des questions (2FA), en attente des réponses ;
  * - `blocked` : clé d'hôte modifiée, connexion refusée sans contournement ;
  * - `connected` : terminal utilisable ;
  * - `disconnected` : session terminée après avoir été établie.
  */
 export type TabStatus =
-  'form' | 'connecting' | 'hostKey' | 'authenticating' | 'blocked' | 'connected' | 'disconnected';
+  | 'form'
+  | 'connecting'
+  | 'hostKey'
+  | 'authenticating'
+  | 'authPrompt'
+  | 'blocked'
+  | 'connected'
+  | 'disconnected';
 
 /** Cible d'une connexion, **sans aucun secret** (le mot de passe n'est jamais stocké). */
 export interface ConnectTarget {
   host: string;
   port: number;
   username: string;
-  authKind: 'password' | 'key';
+  authKind: 'password' | 'key' | 'interactive';
   keyFile: KeyFileRef | null;
   /** Hôte du carnet : la connexion utilise son identité enregistrée, sans rien redemander. */
   hostId?: EntryId;
@@ -52,6 +60,8 @@ export interface SessionTab {
   pendingHostKey: HostKeyInfo | null;
   /** Clé d'hôte modifiée (connexion bloquée). */
   hostKeyChange: HostKeyChange | null;
+  /** Questions du serveur en attente de réponse (aucune réponse n'est conservée ici). */
+  pendingPrompt: AuthPromptInfo | null;
   /** Barre de recherche du terminal ouverte. */
   searchOpen: boolean;
 }
@@ -95,6 +105,7 @@ export const useSessions = create<SessionsState>()((set, get) => ({
       errorCode: null,
       pendingHostKey: null,
       hostKeyChange: null,
+      pendingPrompt: null,
       searchOpen: false,
     };
     set((s) => ({ tabs: [...s.tabs, tab], activeTabId: id }));
