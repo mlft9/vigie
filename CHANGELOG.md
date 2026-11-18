@@ -37,12 +37,19 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Section Clés : import d'une clé privée existante dans le coffre (sa passphrase n'est demandée qu'une fois), renommage, copie de la clé publique.
 - Gestion des clés d'hôte connues : liste et suppression après un avertissement. L'alerte de clé modifiée y mène directement.
 - Taille de police du terminal réglable dans les Paramètres.
+- Double authentification (2FA) : quand le serveur pose des questions (code de vérification TOTP, mot de passe PAM…), elles s'affichent dans une fenêtre dédiée de l'onglet. Les serveurs qui exigent plusieurs méthodes à la suite (clé puis code, mot de passe puis code) sont pris en charge. Pour un hôte du carnet « mot de passe + code », le mot de passe enregistré est envoyé automatiquement et seul le code est demandé (ADR-031).
+- Connexion rapide : nouveau mode « Questions du serveur (2FA) », où rien n'est saisi d'avance.
+- Générateur de clés SSH : Ed25519 (par défaut), ECDSA P-256, P-384 ou P-521, RSA 4096. La clé est créée directement dans le coffre (ADR-032).
+- Export de la clé publique dans un fichier `.pub`, à l'emplacement choisi dans la boîte de dialogue du système.
+- Déploiement d'une clé sur un hôte du carnet : la clé publique est ajoutée à `~/.ssh/authorized_keys`, sans doublon si on recommence, avec des permissions restrictives (700 pour `~/.ssh`, 600 pour le fichier). Serveurs Unix uniquement (ADR-033).
 
 ### Modifié
 - Toute l'application, connexion rapide comprise, n'est accessible qu'après le déverrouillage du coffre.
 - Verrouiller l'application, ou recharger l'interface, ferme toutes les sessions SSH et efface le contenu des terminaux (ADR-026).
 - Les clés d'hôte acceptées sont désormais conservées dans le coffre, et non plus dans un fichier `known_hosts` en clair. Celles déjà acceptées sont reprises automatiquement à la création du coffre (ADR-027).
 - Les préférences (langue, thème, police) sont enregistrées par l'application dans un fichier `settings.json` ; les réglages déjà faits sont repris automatiquement.
+- Une identité avec une clé seule, refusée par le serveur, peut désormais aboutir aux questions du serveur (mot de passe, code), comme avec OpenSSH.
+- Le temps passé à répondre aux questions du serveur n'est plus compté dans le délai réseau de la connexion ; chaque demande laisse 2 minutes pour répondre.
 
 ### Sécurité
 - Configuration Tauri durcie : politique de sécurité du contenu (CSP) stricte, aucun contenu distant, pas d'API Tauri globale exposée à l'interface, prototypes JavaScript gelés.
@@ -65,3 +72,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), ver
 - Les clés d'hôte, chiffrées et authentifiées dans le coffre, ne peuvent plus être lues ni falsifiées par un autre logiciel (ADR-027).
 - Après un changement de mot de passe maître, la copie de sauvegarde du coffre est remplacée par une copie du nouveau coffre, ou supprimée : l'ancien mot de passe n'ouvre plus aucune copie gérée par Younji.
 - Le coffre est écrit de façon à ne jamais être laissé à moitié écrit, avec une copie de sauvegarde de la version précédente ; sa création n'écrase jamais un coffre existant ni une copie de sauvegarde restée seule.
+- Questions du serveur affichées comme du texte simple, débarrassées des caractères de contrôle et invisibles, et limitées en taille et en nombre. La fenêtre rappelle quel serveur les pose et que Younji ne demande jamais le mot de passe maître à cet endroit (protection contre l'hameçonnage).
+- Le mot de passe enregistré n'est envoyé automatiquement qu'à une question « Password » / « Mot de passe » exacte et masquée, une seule fois : jamais à une question comme « New password ». Les codes saisis ne sont ni conservés, ni journalisés, ni renvoyés à l'interface.
+- Les clés générées utilisent l'aléa du système et ne quittent jamais le coffre : aucun export de la clé privée. L'export de la clé publique impose l'extension `.pub` et n'écrase jamais un fichier sans confirmation, pour ne pas remplacer par erreur une clé privée voisine.
+- Le déploiement de clé n'insère jamais la clé dans une commande exécutée sur le serveur : elle est transmise séparément, ce qui empêche toute injection. Il passe par les mêmes vérifications qu'une connexion (clé d'hôte, 2FA) et s'interrompt au verrouillage.

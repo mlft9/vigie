@@ -37,6 +37,10 @@ fn main() {
             "known_host_delete",
             "settings_get",
             "settings_set",
+            "ssh_auth_answer",
+            "key_generate",
+            "key_export_public",
+            "key_deploy",
         ]));
 
     if let Err(error) = tauri_build::try_build(attributes) {

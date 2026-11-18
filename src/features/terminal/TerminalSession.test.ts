@@ -78,6 +78,7 @@ vi.mock('@/lib/ipc', async (importOriginal) => {
     sshAck: vi.fn().mockResolvedValue(undefined),
     sshClose: vi.fn().mockResolvedValue(undefined),
     sshHostKeyDecision: vi.fn().mockResolvedValue(undefined),
+    sshAuthAnswer: vi.fn().mockResolvedValue(undefined),
     openExternalUrl: vi.fn().mockResolvedValue(undefined),
   };
 });
@@ -156,6 +157,74 @@ describe('TerminalSession', () => {
     emit({ type: 'authenticating' });
     emit({ type: 'connected' });
     expect(tab()).toMatchObject({ status: 'connected', pendingHostKey: null, errorCode: null });
+  });
+
+  it('suit les questions du serveur (2FA) sans conserver les réponses', async () => {
+    const { session, emit, tab } = await connected();
+    emit({ type: 'authenticating' });
+    const prompt = {
+      round: 1,
+      name: '',
+      instructions: '',
+      prompts: [{ text: 'Verification code: ', echo: false }],
+    };
+    emit({ type: 'authPrompt', ...prompt });
+    expect(tab()).toMatchObject({ status: 'authPrompt', pendingPrompt: prompt });
+
+    await session.answerPrompt(['123456']);
+    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(7, 1, ['123456']);
+    expect(tab()).toMatchObject({ status: 'authenticating', pendingPrompt: null });
+    expect(JSON.stringify(useSessions.getState())).not.toContain('123456');
+    emit({ type: 'authenticating' });
+    emit({ type: 'connected' });
+    expect(tab()?.status).toBe('connected');
+  });
+
+  it('transmet l’annulation des questions et revient au formulaire', async () => {
+    const { session, emit, tab } = await connected();
+    emit({
+      type: 'authPrompt',
+      round: 4,
+      name: '',
+      instructions: '',
+      prompts: [{ text: 'Code', echo: true }],
+    });
+    await session.answerPrompt(null);
+    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(7, 4, null);
+    emit({ type: 'disconnected', code: 'ssh.auth_cancelled' });
+    expect(tab()).toMatchObject({
+      status: 'form',
+      errorCode: 'ssh.auth_cancelled',
+      pendingPrompt: null,
+    });
+  });
+
+  it('réaffiche la question si le cœur refuse les réponses', async () => {
+    const { session, emit, tab } = await connected();
+    const prompt = {
+      round: 2,
+      name: '',
+      instructions: '',
+      prompts: [{ text: 'Code', echo: false }],
+    };
+    emit({ type: 'authPrompt', ...prompt });
+    vi.mocked(ipc.sshAuthAnswer).mockRejectedValueOnce({ code: 'ssh.invalid_answers' });
+    await session.answerPrompt(['x'.repeat(2000)]);
+    expect(tab()).toMatchObject({
+      status: 'authPrompt',
+      pendingPrompt: prompt,
+      errorCode: 'ssh.invalid_answers',
+    });
+  });
+
+  it('se connecte en mode interactif sans aucun secret', async () => {
+    const tabId = useSessions.getState().openTab();
+    const session = new TerminalSession(tabId);
+    vi.mocked(ipc.sshConnect).mockResolvedValueOnce(3);
+    await session.connect({ ...TARGET, authKind: 'interactive' }, {});
+    expect(vi.mocked(ipc.sshConnect).mock.calls[0]?.[0]).toMatchObject({
+      auth: { kind: 'interactive' },
+    });
   });
 
   it('revient au formulaire avec la cause si la connexion échoue avant le shell', async () => {

@@ -18,6 +18,7 @@ import {
   sshClose,
   sshConnect,
   sshConnectHost,
+  sshAuthAnswer,
   sshHostKeyDecision,
   sshResize,
   sshWrite,
@@ -207,14 +208,18 @@ export class TerminalSession {
 
   /** Ouvre une session SSH dans ce terminal (première connexion ou reconnexion). */
   async connect(target: ConnectTarget, secrets: ConnectSecrets): Promise<void> {
-    const auth: AuthRequest =
-      target.authKind === 'password'
-        ? { kind: 'password', password: secrets.password ?? '' }
-        : {
-            kind: 'key',
-            keyFileId: target.keyFile?.id ?? -1,
-            passphrase: secrets.passphrase ?? null,
-          };
+    let auth: AuthRequest;
+    if (target.authKind === 'password') {
+      auth = { kind: 'password', password: secrets.password ?? '' };
+    } else if (target.authKind === 'key') {
+      auth = {
+        kind: 'key',
+        keyFileId: target.keyFile?.id ?? -1,
+        passphrase: secrets.passphrase ?? null,
+      };
+    } else {
+      auth = { kind: 'interactive' };
+    }
     await this.open(target, (size, listeners) =>
       sshConnect(
         { host: target.host, port: target.port, username: target.username, auth, ...size },
@@ -251,6 +256,7 @@ export class TerminalSession {
       errorCode: null,
       pendingHostKey: null,
       hostKeyChange: null,
+      pendingPrompt: null,
     });
     const size = this.opened
       ? { cols: this.terminal.cols, rows: this.terminal.rows }
@@ -299,6 +305,26 @@ export class TerminalSession {
     }
   }
 
+  /**
+   * Réponses aux questions du serveur (`null` : annulation). Les réponses ne sont pas
+   * conservées : l'appelant vide ses champs dès l'appel. Si le cœur les refuse (longueur,
+   * nombre), la question est réaffichée avec la cause : elle est toujours en attente.
+   */
+  async answerPrompt(answers: string[] | null): Promise<void> {
+    const prompt = useSessions.getState().tabs.find((t) => t.id === this.tabId)?.pendingPrompt;
+    if (this.sessionId === null || !prompt) return;
+    this.update({ pendingPrompt: null, status: 'authenticating', errorCode: null });
+    try {
+      await sshAuthAnswer(this.sessionId, prompt.round, answers);
+    } catch (error) {
+      const code = toAppError(error).code;
+      if (code === 'ssh.invalid_answers') {
+        this.update({ pendingPrompt: prompt, status: 'authPrompt', errorCode: code });
+      }
+      // Sinon, la session s'est terminée entre-temps : l'événement de fin met l'onglet à jour.
+    }
+  }
+
   private handleEvent(event: SessionEvent): void {
     switch (event.type) {
       case 'hostKeyUnknown':
@@ -315,7 +341,22 @@ export class TerminalSession {
         });
         break;
       case 'authenticating':
-        this.update({ status: 'authenticating', pendingHostKey: null });
+        this.update({ status: 'authenticating', pendingHostKey: null, pendingPrompt: null });
+        break;
+      case 'authPrompt':
+        this.update({
+          status: 'authPrompt',
+          errorCode: null,
+          pendingPrompt: {
+            round: event.round,
+            name: event.name,
+            instructions: event.instructions,
+            prompts: event.prompts,
+          },
+        });
+        break;
+      case 'keyDeployed':
+        // Réservé aux déploiements de clé : sans objet pour une session de terminal.
         break;
       case 'connected':
         this.everConnected = true;
@@ -336,10 +377,15 @@ export class TerminalSession {
     if (current?.status === 'blocked') return; // L'alerte de clé modifiée reste affichée.
     if (code === 'ssh.session_closed') return; // Fermeture demandée par l'interface.
     if (this.everConnected) {
-      this.update({ status: 'disconnected', errorCode: code, pendingHostKey: null });
+      this.update({
+        status: 'disconnected',
+        errorCode: code,
+        pendingHostKey: null,
+        pendingPrompt: null,
+      });
     } else {
       // Échec avant l'ouverture du shell : retour au formulaire avec la cause.
-      this.update({ status: 'form', errorCode: code, pendingHostKey: null });
+      this.update({ status: 'form', errorCode: code, pendingHostKey: null, pendingPrompt: null });
     }
   }
 

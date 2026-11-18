@@ -1,4 +1,15 @@
-import { Copy, KeyRound, Pencil, Plus, Trash2, Upload, UserRound } from 'lucide-react';
+import {
+  Copy,
+  Download,
+  KeyRound,
+  Pencil,
+  Plus,
+  Send,
+  Sparkles,
+  Trash2,
+  Upload,
+  UserRound,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -6,22 +17,29 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { NameDialog } from '@/components/NameDialog';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/features/connect/ErrorMessage';
-import { identityDelete, keyDelete, keyRename, toAppError } from '@/lib/ipc';
+import { identityDelete, keyDelete, keyExportPublic, keyRename, toAppError } from '@/lib/ipc';
 import type { IdentityEntry, KeyEntry } from '@/lib/types';
 import { useVault } from '@/stores/vault';
 
 import { IdentityForm } from './IdentityForm';
+import { KeyDeployDialog } from './KeyDeployDialog';
+import { KeyGenerateDialog } from './KeyGenerateDialog';
 import { KeyImportDialog } from './KeyImportDialog';
 import { KnownHostsList } from './KnownHostsList';
 
 type Dialog =
   | { kind: 'import' }
+  | { kind: 'generate' }
+  | { kind: 'deploy'; key: KeyEntry }
   | { kind: 'renameKey'; key: KeyEntry }
   | { kind: 'deleteKey'; key: KeyEntry }
   | { kind: 'identity'; identity: IdentityEntry | null }
   | { kind: 'deleteIdentity'; identity: IdentityEntry };
 
-/** Section Clés : clés importées (KEY-02), identités (HST-03), clés d'hôte connues (HKY-04). */
+/**
+ * Section Clés : clés générées (KEY-01) ou importées (KEY-02), export et déploiement de la clé
+ * publique (KEY-03), identités (HST-03), clés d'hôte connues (HKY-04).
+ */
 export function KeysView() {
   const { t } = useTranslation();
   const snapshot = useVault((s) => s.snapshot);
@@ -29,6 +47,7 @@ export function KeysView() {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [exported, setExported] = useState<string | null>(null);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -51,6 +70,15 @@ export function KeysView() {
     }
   }
 
+  async function exportPublicKey(key: KeyEntry) {
+    setError(null);
+    try {
+      if (await keyExportPublic(key.id)) setExported(key.id);
+    } catch (failure) {
+      setError(toAppError(failure).code);
+    }
+  }
+
   const close = () => {
     setDialog(null);
   };
@@ -68,6 +96,16 @@ export function KeysView() {
           <Button
             size="sm"
             className="ml-auto"
+            onClick={() => {
+              setDialog({ kind: 'generate' });
+            }}
+          >
+            <Sparkles aria-hidden="true" />
+            {t('keys.generate.button')}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => {
               setDialog({ kind: 'import' });
             }}
@@ -97,6 +135,28 @@ export function KeysView() {
                 >
                   <Copy aria-hidden="true" />
                   {copied === key.id ? t('keys.copied') : t('keys.copyPublic')}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  aria-label={t('keys.exportFor', { name: key.name })}
+                  title={exported === key.id ? t('keys.exported') : t('keys.export')}
+                  onClick={() => void exportPublicKey(key)}
+                >
+                  <Download aria-hidden="true" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  aria-label={t('keys.deployFor', { name: key.name })}
+                  title={t('keys.deploy.button')}
+                  onClick={() => {
+                    setDialog({ kind: 'deploy', key });
+                  }}
+                >
+                  <Send aria-hidden="true" />
                 </Button>
                 <Button
                   size="icon"
@@ -199,6 +259,19 @@ export function KeysView() {
 
       <KnownHostsList />
 
+      {dialog?.kind === 'generate' && (
+        <KeyGenerateDialog onGenerated={() => void refresh()} onClose={close} />
+      )}
+      {dialog?.kind === 'deploy' && (
+        <KeyDeployDialog
+          keyEntry={dialog.key}
+          hosts={snapshot.hosts}
+          onClose={close}
+          onManageHostKeys={() => {
+            document.getElementById('known-hosts-title')?.scrollIntoView();
+          }}
+        />
+      )}
       {dialog?.kind === 'import' && (
         <KeyImportDialog onImported={() => void refresh()} onClose={close} />
       )}

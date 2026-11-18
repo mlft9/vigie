@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-key-export-public"
+description = "Enables the key_export_public command without any pre-configured scope."
+commands.allow = ["key_export_public"]
+
+[[permission]]
+identifier = "deny-key-export-public"
+description = "Denies the key_export_public command without any pre-configured scope."
+commands.deny = ["key_export_public"]

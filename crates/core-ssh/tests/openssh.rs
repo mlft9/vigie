@@ -23,8 +23,8 @@ use std::time::Duration;
 
 use core_ssh::auth::load_private_key;
 use core_ssh::{
-    ConnectParams, Credentials, KnownHosts, SessionEvent, SessionHandle, SessionSink, SshError,
-    Target, TermSize, Timeouts,
+    AuthorizedKeyLine, ConnectParams, Credentials, DeployParams, KeyKind, KnownHosts, SessionEvent,
+    SessionHandle, SessionSink, SshError, Target, TermSize, Timeouts,
 };
 use secrecy::SecretString;
 use tokio::sync::mpsc;
@@ -329,4 +329,69 @@ async fn changed_host_key_is_blocked() {
     // Le fichier n'a pas été modifié : l'ancienne clé reste la seule enregistrée.
     let content = std::fs::read_to_string(client.known_hosts.path().unwrap()).unwrap();
     assert_eq!(content.lines().count(), 1);
+}
+
+/// Déploie une clé et renvoie l'issue (`Some(true)` : ajoutée, `Some(false)` : déjà présente).
+async fn deploy_once(user: &str, password: &str, line: &AuthorizedKeyLine) -> Option<bool> {
+    let (host, port) = host_and_port()?;
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let params = DeployParams {
+        target: Target::new(&host, port, user).unwrap(),
+        credentials: password_credentials(password.to_owned()),
+        key: line.clone(),
+        known_hosts: Arc::new(KnownHosts::new(dir.path().join("known_hosts"))),
+        timeouts: Timeouts::default(),
+    };
+    let handle = SessionHandle::spawn_deploy(params, Arc::new(Sink(tx)));
+    loop {
+        match tokio::time::timeout(WAIT, rx.recv()).await {
+            Ok(Some(Received::Event(SessionEvent::HostKeyUnknown { .. }))) => {
+                handle.decide_host_key(true).unwrap();
+            }
+            Ok(Some(Received::Event(SessionEvent::KeyDeployed { added }))) => return Some(added),
+            Ok(Some(Received::Event(SessionEvent::Disconnected { reason }))) => {
+                panic!("déploiement interrompu : {reason:?}")
+            }
+            Ok(Some(_)) => {}
+            _ => panic!("aucun événement reçu à temps"),
+        }
+    }
+}
+
+/// KEY-03 : déployer une clé générée, redéployer sans doublon, se connecter par clé et
+/// vérifier les permissions, puis retirer la clé ajoutée.
+#[tokio::test]
+#[ignore = "nécessite un serveur SSH de test"]
+async fn generated_key_is_deployed_once_and_then_used() {
+    let (Some(user), Some(password)) = (
+        required("YOUNJI_TEST_SSH_USER"),
+        required("YOUNJI_TEST_SSH_PASSWORD"),
+    ) else {
+        return;
+    };
+    let generated = core_ssh::generate_key(KeyKind::Ed25519).unwrap();
+    let key = core_ssh::auth::decode_stored_key(&generated.private_key).unwrap();
+    let line = AuthorizedKeyLine::from_private(&key).unwrap();
+
+    assert_eq!(deploy_once(&user, &password, &line).await, Some(true));
+    assert_eq!(deploy_once(&user, &password, &line).await, Some(false));
+
+    let Some(mut client) = Client::connect(&user, Credentials::PrivateKey(Arc::new(key))) else {
+        return;
+    };
+    client.accept_and_open().await;
+    let blob = line.as_str().split(' ').nth(1).unwrap();
+    // Une seule ligne pour cette clé, permissions 700 / 600 (`stat` GNU).
+    let check = format!(
+        "echo n=$(grep -cF {blob} ~/.ssh/authorized_keys) m=$(stat -c %a ~/.ssh ~/.ssh/authorized_keys)\r"
+    );
+    client.handle.write(check.into_bytes()).await.unwrap();
+    client.wait_output("n=1 m=700 600").await;
+    // Nettoyage : la clé de test ne reste pas sur le serveur.
+    let cleanup = format!(
+        "grep -vF {blob} ~/.ssh/authorized_keys > ~/.ssh/ak.tmp; cat ~/.ssh/ak.tmp > ~/.ssh/authorized_keys; rm -f ~/.ssh/ak.tmp; echo nettoye-$((1+1))\r"
+    );
+    client.handle.write(cleanup.into_bytes()).await.unwrap();
+    client.wait_output("nettoye-2").await;
 }

@@ -74,7 +74,8 @@
     "refresh": "Refresh",
     "rename": "Rename",
     "retry": "Retry",
-    "save": "Save"
+    "save": "Save",
+    "close": "Close"
   },
   "connect": {
     "title": "Quick connect",
@@ -86,7 +87,8 @@
     "authMethod": "Authentication",
     "auth": {
       "password": "Password",
-      "key": "Private key"
+      "key": "Private key",
+      "interactive": "Server questions (2FA)"
     },
     "password": "Password",
     "keyFile": "Key file",
@@ -94,7 +96,8 @@
     "noKey": "No key selected",
     "passphrase": "Passphrase",
     "passphraseHint": "Leave empty if the key is not protected.",
-    "submit": "Connect"
+    "submit": "Connect",
+    "interactiveHint": "No secret is entered here: the server asks its questions (password, verification code…) in a dedicated window."
   },
   "session": {
     "connecting": "Connecting to {{host}}…",
@@ -218,7 +221,15 @@
       "session_ended": "Session ended.",
       "session_closed": "Session closed.",
       "session_not_found": "This session no longer exists.",
-      "too_many_sessions": "Too many open sessions. Close some before opening a new one."
+      "too_many_sessions": "Too many open sessions. Close some before opening a new one.",
+      "auth_prompt_invalid": "The server sent an abnormal authentication request (too many questions): connection aborted.",
+      "auth_prompt_timeout": "No answer to the server's questions in time.",
+      "auth_cancelled": "Authentication cancelled.",
+      "no_pending_prompt": "The server is no longer waiting for an answer.",
+      "invalid_answers": "Invalid answers (too long or wrong number).",
+      "key_generation_failed": "Key generation failed.",
+      "invalid_public_key": "This public key cannot be deployed.",
+      "deploy_failed": "Deployment failed on the server. It requires a Unix server (sh shell) and a writable home directory."
     },
     "connect": {
       "missing_fields": "Enter the host and the user.",
@@ -263,7 +274,8 @@
       "io": "Settings could not be saved."
     },
     "keys": {
-      "copy_failed": "Copying to the clipboard failed."
+      "copy_failed": "Copying to the clipboard failed.",
+      "export_failed": "The file could not be saved."
     }
   },
   "vault": {
@@ -338,7 +350,7 @@
   },
   "keys": {
     "title": "Private keys",
-    "empty": "No imported key. Import an existing key to use it in an identity.",
+    "empty": "No keys. Generate a new key or import an existing one to use it in an identity.",
     "name": "Name",
     "copyPublic": "Copy public key",
     "copyPublicFor": "Copy the public key of {{name}}",
@@ -354,6 +366,41 @@
       "intro": "The key is decrypted once with its passphrase, then stored in the vault, which protects it. The original file is neither modified nor deleted.",
       "passphraseHint": "Leave empty if the key is not protected. The passphrase is not kept.",
       "submit": "Import"
+    },
+    "export": "Export public key (.pub)",
+    "exportFor": "Export the public key of {{name}}",
+    "exported": "Public key exported",
+    "deployFor": "Deploy key {{name}} to a host",
+    "kind": {
+      "ed25519": "Ed25519 (recommended)",
+      "ecdsaP256": "ECDSA P-256",
+      "ecdsaP384": "ECDSA P-384",
+      "ecdsaP521": "ECDSA P-521",
+      "rsa4096": "RSA 4096-bit"
+    },
+    "generate": {
+      "button": "Generate a key",
+      "title": "Generate a key",
+      "intro": "The key is created inside the vault and never leaves it: only the public key is shown, copied or exported. The vault protects it, so no passphrase is needed.",
+      "kind": "Key type",
+      "rsaHint": "Works with older servers. Generation may take a few seconds.",
+      "defaultName": "{{kind}} key",
+      "submit": "Generate",
+      "busy": "Generating…"
+    },
+    "deploy": {
+      "button": "Deploy to a host",
+      "title": "Deploy “{{name}}”",
+      "intro": "The public key is added to ~/.ssh/authorized_keys on the chosen host, without duplicates, with restrictive permissions (700 for ~/.ssh, 600 for the file). The connection uses the host's identity. Unix servers only.",
+      "noHosts": "No hosts in the address book. Add the target host first.",
+      "host": "Host",
+      "passwordHint": "This host has no identity. Enter its password for this deployment, or leave empty to answer the server's questions.",
+      "submit": "Deploy",
+      "running": "Deploying to {{host}}…",
+      "blocked": "The host key of {{host}} has changed: deployment refused, no credentials were sent. Check the new fingerprint before deleting the old key.",
+      "added": "Key added on {{host}}.",
+      "present": "The key was already present on {{host}}: nothing was changed.",
+      "nextStep": "To log in with this key, select it in the identity used by the host (Keys > Identities)."
     }
   },
   "identities": {
@@ -386,5 +433,13 @@
     "deleteTitle": "Delete this host key?",
     "deleteMessage": "Host: {{host}}\nFingerprint: {{fingerprint}}\n\nOnly delete this key after checking with the administrator that the change is legitimate (reinstalled server, regenerated keys). On the next connection, the new key will be shown and must be accepted.",
     "deleteConfirm": "Delete the key"
+  },
+  "authPrompt": {
+    "title": "Verification requested by the server",
+    "intro": "The server {{host}} needs the following information to complete the connection.",
+    "serverMessage": "Message sent by the server",
+    "answer": "Answer {{number}}",
+    "warning": "Younji will never ask for your master password here. Only enter what this server expects (remote account password, verification code…).",
+    "submit": "Submit"
   }
 }

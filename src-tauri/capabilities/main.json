@@ -35,6 +35,10 @@
     "allow-known-host-list",
     "allow-known-host-delete",
     "allow-settings-get",
-    "allow-settings-set"
+    "allow-settings-set",
+    "allow-ssh-auth-answer",
+    "allow-key-generate",
+    "allow-key-export-public",
+    "allow-key-deploy"
   ]
 }

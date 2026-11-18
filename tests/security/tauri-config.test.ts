@@ -206,6 +206,11 @@ describe('capabilities', () => {
       'allow-known-host-delete',
       'allow-settings-get',
       'allow-settings-set',
+      // Étape 3 : 2FA, génération, export et déploiement de clés.
+      'allow-ssh-auth-answer',
+      'allow-key-generate',
+      'allow-key-export-public',
+      'allow-key-deploy',
     ];
     expect([...permissionIds].sort()).toEqual([...EXPECTED_PERMISSIONS].sort());
   });

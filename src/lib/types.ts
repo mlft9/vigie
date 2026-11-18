@@ -24,7 +24,9 @@ export interface KeyFileRef {
 /** Moyen d'authentification envoyé une seule fois à `ssh_connect`. */
 export type AuthRequest =
   | { kind: 'password'; password: string }
-  | { kind: 'key'; keyFileId: number; passphrase: string | null };
+  | { kind: 'key'; keyFileId: number; passphrase: string | null }
+  /** Aucun secret d'avance : les questions du serveur (2FA) sont posées au fil de l'eau. */
+  | { kind: 'interactive' };
 
 /** Demande de connexion (src-tauri/src/commands/ssh.rs, `ConnectRequest`). */
 export interface ConnectRequest {
@@ -42,6 +44,22 @@ export interface HostKeyInfo {
   fingerprint: string;
 }
 
+/** Question posée par le serveur (keyboard-interactive), texte déjà nettoyé par le cœur. */
+export interface PromptField {
+  text: string;
+  /** `true` : la réponse peut s'afficher pendant la saisie (choix du serveur). */
+  echo: boolean;
+}
+
+/** Demande du serveur : un tour de questions (code TOTP, mot de passe PAM…). */
+export interface AuthPromptInfo {
+  /** Numéro de la demande, renvoyé avec les réponses (une réponse ne vaut que pour ce tour). */
+  round: number;
+  name: string;
+  instructions: string;
+  prompts: PromptField[];
+}
+
 /** Événement d'état d'une session (`SessionEventDto`). */
 export type SessionEvent =
   | { type: 'hostKeyUnknown'; key: HostKeyInfo }
@@ -52,6 +70,8 @@ export type SessionEvent =
       hostPattern: string;
     }
   | { type: 'authenticating' }
+  | ({ type: 'authPrompt' } & AuthPromptInfo)
+  | { type: 'keyDeployed'; added: boolean }
   | { type: 'connected' }
   | { type: 'disconnected'; code: string };
 
@@ -139,6 +159,23 @@ export interface KeyImportRequest {
   keyFileId: number;
   name: string;
   passphrase: string | null;
+}
+
+/** Type de clé à générer (KEY-01). */
+export type KeyKind = 'ed25519' | 'ecdsaP256' | 'ecdsaP384' | 'ecdsaP521' | 'rsa4096';
+
+/** Génération d'une clé dans le coffre. */
+export interface KeyGenerateRequest {
+  name: string;
+  kind: KeyKind;
+}
+
+/** Déploiement d'une clé du coffre sur un hôte du carnet (KEY-03). */
+export interface KeyDeployRequest {
+  hostId: EntryId;
+  keyId: EntryId;
+  /** Uniquement si l'hôte n'a pas d'identité ; sinon `null`. */
+  password: string | null;
 }
 
 /** Clé d'hôte connue (HKY-04). */

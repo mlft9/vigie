@@ -42,3 +42,14 @@ opt-level = 3
 
 [profile.dev.package.blake2]
 opt-level = 3
+
+# Génération de clés RSA 4096 (KEY-01) : quelques secondes sans optimisation. Même raison
+# que pour Argon2 ; sans effet sur la compilation de production.
+[profile.dev.package.rsa]
+opt-level = 3
+
+[profile.dev.package.crypto-bigint]
+opt-level = 3
+
+[profile.dev.package.crypto-primes]
+opt-level = 3

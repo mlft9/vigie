@@ -73,8 +73,15 @@ pub struct Timeouts {
     pub handshake: Duration,
     /// Temps laissé à l'utilisateur pour accepter ou refuser une clé d'hôte inconnue.
     pub host_key_decision: Duration,
-    /// Authentification, puis ouverture du canal, du PTY et du shell.
+    /// Chaque échange réseau de l'authentification, puis l'ouverture du canal, du PTY et du
+    /// shell. Le temps de saisie de l'utilisateur n'y est pas compté.
     pub auth: Duration,
+    /// Total du temps réseau de l'authentification (somme des échanges, hors saisie de
+    /// l'utilisateur).
+    pub auth_total: Duration,
+    /// Temps laissé à l'utilisateur pour répondre à une demande keyboard-interactive (code
+    /// TOTP…).
+    pub auth_prompt: Duration,
     /// Intervalle des keepalives quand le serveur ne dit rien.
     pub keepalive_interval: Duration,
     /// Nombre de keepalives sans réponse avant de déclarer la connexion perdue.
@@ -88,6 +95,8 @@ impl Default for Timeouts {
             handshake: Duration::from_secs(20),
             host_key_decision: Duration::from_secs(120),
             auth: Duration::from_secs(30),
+            auth_total: Duration::from_secs(60),
+            auth_prompt: Duration::from_secs(120),
             keepalive_interval: Duration::from_secs(15),
             keepalive_max: 3,
         }

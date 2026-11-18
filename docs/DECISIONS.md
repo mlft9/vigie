@@ -35,6 +35,9 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 | 028 | Application derrière le déverrouillage ; minuteur, tentatives et sauvegarde gérés par le cœur | Acceptée, prise en autonomie, à relire |
 | 029 | Robustesse du mot de passe maître : zxcvbn (Rust) fait foi, zxcvbn-ts pour l'indicateur | Acceptée, prise en autonomie, à relire |
 | 030 | Identités et clés du coffre | Acceptée, prise en autonomie, à relire |
+| 031 | Authentification en plusieurs méthodes et keyboard-interactive | Acceptée, prise en autonomie, à relire |
+| 032 | Clés générées dans le coffre, sans passphrase ni export de la clé privée | Acceptée, prise en autonomie, à relire ; écart à KEY-01 à trancher |
+| 033 | Déploiement de clé par commande `sh` constante et entrée standard | Acceptée, prise en autonomie, à relire |
 
 ---
 
@@ -365,3 +368,56 @@ Format : statut, contexte, décision, alternatives écartées, conséquences.
 - Groupes imbriqués : plus complexes à valider, sans besoin exprimé par HST-02.
 
 **Conséquences** : aucune saisie à la connexion ni à la reconnexion depuis le carnet. La sécurité des clés importées repose entièrement sur le mot de passe maître et Argon2id (ADR-005). L'export d'une clé privée n'est pas proposé.
+
+## ADR-031 — Authentification en plusieurs méthodes et keyboard-interactive
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur. Précise l'ordre « clé puis mot de passe » d'ADR-030.
+**Contexte** : AUTH-03 demande d'afficher les questions du serveur (code TOTP…). Un serveur peut exiger plusieurs méthodes à la suite (`AuthenticationMethods publickey,keyboard-interactive`) et poser des questions arbitraires : leur texte n'est pas fiable (menace M3), et un serveur malveillant peut tenter de se faire passer pour Younji.
+**Décision** :
+- **Enchaînement** : la méthode `none` révèle d'abord les méthodes acceptées ; ensuite la clé, le mot de passe et keyboard-interactive sont essayés dans cet ordre, **selon les méthodes restantes** annoncées par le serveur, succès partiels compris. Chaque moyen n'est utilisé qu'une fois.
+- **Nouveau moyen `Credentials::Interactive`** : aucun secret fourni d'avance. C'est le mode « Questions du serveur (2FA) » de la connexion rapide.
+- **Remplissage automatique du mot de passe enregistré**, limité : une seule fois par connexion, pour une demande d'**une seule** question **sans écho** dont le texte est exactement « Password » ou « Mot de passe » (casse, espaces et « : » ignorés), et seulement si la méthode `password` ne l'a pas déjà refusé. Toute autre question est posée à l'utilisateur.
+- **Questions nettoyées et bornées** (caractères de contrôle et invisibles retirés, 8 questions par demande, 16 demandes au plus) ; au-delà, `ssh.auth_prompt_invalid`.
+- **Réponses liées au numéro de tour** (`ssh_auth_answer`) : une réponse en retard ou envoyée deux fois ne peut pas servir à la question suivante. Le nombre de réponses et leur longueur sont vérifiés par le cœur.
+- **Délais** : 30 s par échange réseau, 60 s de temps réseau cumulé pour toute l'authentification (hors saisie), 2 min de saisie par demande.
+- **Anti-hameçonnage** : le dialogue indique l'hôte qui pose les questions, encadre le texte du serveur comme « Message envoyé par le serveur » et rappelle que Younji ne demande jamais le mot de passe maître à cet endroit.
+
+**Alternatives écartées** :
+- Ne jamais remplir automatiquement : un hôte du carnet « mot de passe + TOTP » (PAM) redemanderait le mot de passe déjà enregistré à chaque connexion, contrairement à HST-03.
+- Remplir toute question qui contient « password » : le mot de passe partirait aussi vers « New password », « Password for root »… choisies par le serveur.
+
+**Conséquences** : une identité « clé seule » refusée par le serveur peut désormais aboutir à des questions keyboard-interactive, comme avec OpenSSH. Le destinataire du mot de passe rempli automatiquement est le même serveur, déjà authentifié par sa clé d'hôte (TOFU), que pour la méthode `password`. Limite mémoire : russh reçoit les réponses en `String` non effacées (`SECURITE.md` §6).
+
+## ADR-032 — Clés générées dans le coffre, sans passphrase ni export de la clé privée
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur. Prolonge ADR-030. **Écart assumé à KEY-01, à trancher par le porteur.**
+**Contexte** : KEY-01 demande un générateur de clés « avec passphrase optionnelle ». Dans Younji, une clé importée est déjà stockée sans passphrase dans le coffre, qui la protège (ADR-030).
+**Décision** :
+- **Algorithmes** : Ed25519 (par défaut), ECDSA P-256, P-384 et P-521, RSA 4096. Ni RSA plus court, ni DSA.
+- **Aléa** : générateur du système uniquement (`getrandom::SysRng`, équivalent d'`OsRng`). S'il échouait, la génération s'arrêterait plutôt que de produire une clé avec un aléa dégradé.
+- **La clé naît dans le cœur et va directement dans le coffre**, sans passphrase, comme une clé importée. Seules la clé publique (sans commentaire) et l'empreinte reviennent à l'interface.
+- **Pas de passphrase, pas d'export de la clé privée** : une passphrase ne protège qu'un fichier de clé, or la clé ne quitte jamais le cœur. Le coffre (Argon2id, ADR-005) la protège mieux que le chiffrement des fichiers OpenSSH (bcrypt-pbkdf).
+- **Export de la clé publique** (`key_export_public`) : fichier choisi dans la boîte de dialogue du système ouverte par le cœur (ADR-020), extension `.pub` imposée (un nom tapé sans extension ne peut pas écraser la clé privée voisine), écriture atomique, aucun écrasement d'un fichier que la boîte de dialogue n'a pas confirmé.
+
+**Alternatives écartées** :
+- Passphrase optionnelle sans export : elle ne protégerait rien de plus que le coffre et imposerait une saisie à chaque connexion.
+- Export de la clé privée : ouvrirait un chemin d'exfiltration hors du coffre.
+
+**Conséquences** : une clé générée n'est utilisable que depuis Younji. **Question pour le porteur** : faut-il un export de la clé privée, chiffrée par une passphrase **obligatoire** ? Ce serait un nouvel ADR.
+
+## ADR-033 — Déploiement de clé par commande `sh` constante et entrée standard
+**Statut** : Acceptée (18/11/2026) — prise en autonomie, à relire par le porteur
+**Contexte** : KEY-03 demande un déploiement idempotent, avec des permissions correctes. `SECURITE.md` §4.2 impose SFTP ou l'entrée standard d'une commande fixe ; SFTP n'arrive qu'à l'étape 4.
+**Décision** :
+- **Commande constante** `sh -c '…'` (`crates/core-ssh/src/deploy.rs`), sur une ligne, sans apostrophe ni « ! » : tout shell de connexion (bash, zsh, fish…) la lit de la même façon. Aucune donnée n'y est concaténée.
+- **Ligne de clé par l'entrée standard** : `algorithme base64`, **sans commentaire** (aucun nom d'utilisateur ni de machine envoyé au serveur). Elle est **re-dérivée de la clé privée du coffre** puis revalidée ; l'interface ne fournit que des identifiants (hôte, clé).
+- **Idempotence** : la clé n'est « déjà présente » que si une ligne de `authorized_keys` commence exactement par `algorithme base64`. Une ligne commentée ou portant des options (`from=`, `command=`) ne compte pas. Le script fait `umask 077`, `chmod 700 ~/.ssh`, `chmod 600 authorized_keys`, et ajoute un retour à la ligne si le fichier n'en a pas. Seuls un code de retour nul **et** un marqueur exact (`YOUNJI_ADDED` / `YOUNJI_PRESENT`) valent succès.
+- **Même chemin qu'une session** (`SessionHandle::spawn_deploy`) : TOFU strict, 2FA (ADR-031), limite de sessions, fermeture au verrouillage (ADR-026). Hôte cible désigné dans le carnet ; s'il n'a pas d'identité, un mot de passe peut être saisi pour ce seul déploiement, sinon les questions du serveur prennent le relais.
+- **Pas d'association automatique** de la clé déployée à l'identité de l'hôte : l'utilisateur garde la main (message d'aide après le déploiement).
+
+**Alternatives écartées** :
+- Insérer la clé dans la ligne de commande : injection possible, interdite par `SECURITE.md` §4.2.
+- Attendre SFTP (étape 4) : retarde KEY-03 sans gain de sécurité, l'entrée standard étant déjà sûre.
+
+**Conséquences** :
+- Serveurs Unix uniquement. Un serveur Windows (shell `cmd` ou PowerShell) devrait échouer avec `ssh.deploy_failed` : à confirmer sur le lab.
+- Cas limite : un Windows avec `sh` dans le PATH (Git for Windows) pourrait réussir le déploiement dans `%USERPROFILE%\.ssh\authorized_keys`, fichier ignoré par OpenSSH pour les comptes administrateurs (`administrators_authorized_keys`). La connexion par clé échouerait alors sans erreur au déploiement.
+- Le passage à SFTP (étape 4) pourra être étudié dans un nouvel ADR.

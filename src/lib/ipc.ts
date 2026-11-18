@@ -11,7 +11,9 @@ import type {
   HostRequest,
   IdentityRequest,
   KeyEntry,
+  KeyDeployRequest,
   KeyFileRef,
+  KeyGenerateRequest,
   KeyImportRequest,
   KnownHostEntry,
   SessionEvent,
@@ -107,6 +109,18 @@ export function sshResize(sessionId: SessionId, cols: number, rows: number): Pro
 /** Acquitte des octets de sortie affichés (contrôle de flux). */
 export function sshAck(sessionId: SessionId, bytes: number): Promise<void> {
   return call<undefined>('ssh_ack', { sessionId, bytes });
+}
+
+/**
+ * Répond aux questions du serveur (keyboard-interactive), ou annule (`null`). Les réponses
+ * (codes TOTP…) ne sont transmises qu'ici, une fois ; elles ne reviennent jamais du cœur.
+ */
+export function sshAuthAnswer(
+  sessionId: SessionId,
+  round: number,
+  answers: string[] | null,
+): Promise<void> {
+  return call<undefined>('ssh_auth_answer', { sessionId, round, answers });
 }
 
 /** Accepte ou refuse une clé d'hôte inconnue. */
@@ -212,6 +226,28 @@ export function identityDelete(id: EntryId): Promise<void> {
 /** Importe dans le coffre une clé choisie par `sshPickKeyFile`. */
 export function keyImport(request: KeyImportRequest): Promise<KeyEntry> {
   return call<KeyEntry>('key_import', { request });
+}
+
+/** Génère une clé dans le coffre ; seule la partie publique revient. */
+export function keyGenerate(request: KeyGenerateRequest): Promise<KeyEntry> {
+  return call<KeyEntry>('key_generate', { request });
+}
+
+/** Exporte la clé publique dans un fichier choisi par le système (`false` si annulé). */
+export function keyExportPublic(id: EntryId): Promise<boolean> {
+  return call<boolean>('key_export_public', { id });
+}
+
+/**
+ * Déploie une clé du coffre sur un hôte du carnet. Le déroulé (clé d'hôte, questions du
+ * serveur, issue) arrive par `onEvent` ; la session se pilote comme une session SSH
+ * (`sshHostKeyDecision`, `sshAuthAnswer`, `sshClose`).
+ */
+export async function keyDeploy(
+  request: KeyDeployRequest,
+  onEvent: (event: SessionEvent) => void,
+): Promise<SessionId> {
+  return call<SessionId>('key_deploy', { request, onEvent: new Channel<SessionEvent>(onEvent) });
 }
 
 /** Renomme une clé. */

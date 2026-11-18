@@ -3,14 +3,15 @@
 //!
 //! Flux de données : la sortie du terminal part en **octets bruts** sur un premier `Channel`
 //! (pas de JSON), les changements d'état en JSON sur un second. Les secrets n'arrivent qu'une
-//! fois, dans `ssh_connect`, et ne repartent jamais vers l'interface.
+//! fois, dans `ssh_connect` (ou dans les réponses aux questions du serveur, `ssh_auth_answer`),
+//! et ne repartent jamais vers l'interface.
 
 use std::sync::Arc;
 
 use core_ssh::auth::{decode_stored_key, load_private_key};
 use core_ssh::{
-    ConnectParams, Credentials, KeyInfo, SessionEvent, SessionHandle, SessionSink, Target,
-    TermSize, Timeouts,
+    AuthPrompt, AuthorizedKeyLine, ConnectParams, Credentials, DeployParams, KeyInfo,
+    PromptAnswers, SessionEvent, SessionHandle, SessionSink, Target, TermSize, Timeouts,
 };
 use core_vault::{EntryId, VaultData, VaultError};
 use secrecy::SecretString;
@@ -54,6 +55,8 @@ pub enum AuthRequest {
         key_file_id: KeyFileId,
         passphrase: Option<SecretString>,
     },
+    /// Aucun secret d'avance : les questions du serveur (2FA) sont posées au fil de l'eau.
+    Interactive {},
 }
 
 /// Description affichable d'une clé d'hôte.
@@ -71,6 +74,14 @@ impl From<KeyInfo> for KeyInfoDto {
             fingerprint: key.fingerprint,
         }
     }
+}
+
+/// Question du serveur (texte déjà nettoyé et borné par `core-ssh`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptFieldDto {
+    text: String,
+    echo: bool,
 }
 
 /// Événement d'état envoyé à l'interface.
@@ -93,6 +104,16 @@ pub enum SessionEventDto {
     },
     /// Authentification en cours.
     Authenticating,
+    /// Questions du serveur (keyboard-interactive) : réponses par `ssh_auth_answer`.
+    AuthPrompt {
+        /// Numéro de la demande, à renvoyer avec les réponses.
+        round: u32,
+        name: String,
+        instructions: String,
+        prompts: Vec<PromptFieldDto>,
+    },
+    /// Clé déployée (`added` : ajoutée ; sinon déjà présente).
+    KeyDeployed { added: bool },
     /// Session prête.
     Connected,
     /// Session terminée (dernier événement).
@@ -109,6 +130,27 @@ impl SessionEventDto {
                 host_pattern: host_pattern.to_owned(),
             },
             SessionEvent::Authenticating => Self::Authenticating,
+            SessionEvent::AuthPrompt {
+                round,
+                prompt:
+                    AuthPrompt {
+                        name,
+                        instructions,
+                        fields,
+                    },
+            } => Self::AuthPrompt {
+                round,
+                name,
+                instructions,
+                prompts: fields
+                    .into_iter()
+                    .map(|f| PromptFieldDto {
+                        text: f.text,
+                        echo: f.echo,
+                    })
+                    .collect(),
+            },
+            SessionEvent::KeyDeployed { added } => Self::KeyDeployed { added },
             SessionEvent::Connected => Self::Connected,
             SessionEvent::Disconnected { reason } => Self::Disconnected {
                 code: reason.code(),
@@ -117,10 +159,11 @@ impl SessionEventDto {
     }
 }
 
-/// Relie une session `core-ssh` aux deux `Channel` de l'interface.
+/// Relie une session `core-ssh` aux `Channel` de l'interface. Un déploiement n'a pas de
+/// terminal : sa sortie (bannière) est ignorée.
 struct ChannelSink {
     events: Channel<SessionEventDto>,
-    output: Channel<InvokeResponseBody>,
+    output: Option<Channel<InvokeResponseBody>>,
     remover: SessionRemover,
     host_pattern: String,
 }
@@ -138,7 +181,10 @@ impl SessionSink for ChannelSink {
     }
 
     fn output(&self, data: Vec<u8>) {
-        if self.output.send(InvokeResponseBody::Raw(data)).is_err() {
+        let Some(output) = &self.output else {
+            return;
+        };
+        if output.send(InvokeResponseBody::Raw(data)).is_err() {
             tracing::debug!("sortie de terminal non délivrée (interface fermée)");
         }
     }
@@ -190,6 +236,7 @@ pub async fn ssh_connect(
             .map_err(|_| AppError::INTERNAL)??;
             Credentials::PrivateKey(Arc::new(key))
         }
+        AuthRequest::Interactive {} => Credentials::Interactive,
     };
 
     spawn_session(
@@ -224,21 +271,31 @@ fn spawn_session(
     let id = state.insert_session(|_, remover| {
         let sink = ChannelSink {
             events: on_event,
-            output: on_output,
+            output: Some(on_output),
             remover,
             host_pattern,
         };
         SessionHandle::spawn(params, Arc::new(sink))
     })?;
-    // Un verrouillage a pu survenir pendant la préparation (lecture de la clé, du coffre) :
-    // le coffre est verrouillé avant la fermeture des sessions, donc une session enregistrée
-    // après cette fermeture le voit ici et est fermée aussitôt (ADR-026).
-    if !vault.is_unlocked() {
-        let _ = state.close_session(id);
-        return Err(AppError::VAULT_LOCKED);
-    }
+    close_if_locked(id, state, vault)?;
     tracing::debug!(session = id, "session SSH créée");
     Ok(id)
+}
+
+/// Un verrouillage a pu survenir pendant la préparation (lecture de la clé, du coffre) : le
+/// coffre est verrouillé avant la fermeture des sessions, donc une session enregistrée après
+/// cette fermeture le voit ici et est fermée aussitôt (ADR-026).
+fn close_if_locked(
+    id: SessionId,
+    state: &SessionManager,
+    vault: &VaultState,
+) -> Result<(), AppError> {
+    if vault.is_unlocked() {
+        Ok(())
+    } else {
+        let _ = state.close_session(id);
+        Err(AppError::VAULT_LOCKED)
+    }
 }
 
 /// Demande de connexion à un hôte du carnet.
@@ -253,7 +310,23 @@ pub struct HostConnectRequest {
 /// Cible et moyen d'authentification d'un hôte du carnet, lus dans le coffre.
 fn host_credentials(data: &VaultData, host_id: EntryId) -> Result<(Target, Credentials), AppError> {
     let host = data.host(host_id)?;
-    let identity_id = host.identity_id.ok_or(AppError::HOST_WITHOUT_IDENTITY)?;
+    if host.identity_id.is_none() {
+        return Err(AppError::HOST_WITHOUT_IDENTITY);
+    }
+    let (target, credentials) = host_target(data, host_id)?;
+    Ok((target, credentials.ok_or(AppError::HOST_WITHOUT_IDENTITY)?))
+}
+
+/// Cible d'un hôte du carnet et, s'il en a une, les identifiants de son identité.
+fn host_target(
+    data: &VaultData,
+    host_id: EntryId,
+) -> Result<(Target, Option<Credentials>), AppError> {
+    let host = data.host(host_id)?;
+    let Some(identity_id) = host.identity_id else {
+        let target = Target::new(&host.address, u32::from(host.port), &host.username)?;
+        return Ok((target, None));
+    };
     let identity = data.identity(identity_id)?;
     let username = if host.username.is_empty() {
         identity.username.as_str()
@@ -271,7 +344,7 @@ fn host_credentials(data: &VaultData, host_id: EntryId) -> Result<(Target, Crede
         (None, Some(password)) => Credentials::password(password)?,
         (None, None) => return Err(VaultError::IdentityIncomplete.into()),
     };
-    Ok((target, credentials))
+    Ok((target, Some(credentials)))
 }
 
 /// Ouvre une session vers un hôte du carnet, avec l'identité enregistrée : rien n'est
@@ -297,6 +370,89 @@ pub fn ssh_connect_host(
         &state,
         &vault,
     )
+}
+
+/// Réponses de l'utilisateur aux questions du serveur (keyboard-interactive), ou annulation
+/// (`answers` nul). Les réponses (codes TOTP, mots de passe) ne transitent qu'ici, une fois.
+#[tauri::command]
+pub fn ssh_auth_answer(
+    session_id: SessionId,
+    round: u32,
+    answers: Option<Vec<SecretString>>,
+    state: State<'_, SessionManager>,
+) -> Result<(), AppError> {
+    let answers = answers.map(PromptAnswers::new).transpose()?;
+    state
+        .session(session_id)?
+        .answer_prompts(round, answers)
+        .map_err(Into::into)
+}
+
+/// Demande de déploiement d'une clé du coffre sur un hôte du carnet. Pas de `Debug` : peut
+/// contenir un mot de passe.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeployRequest {
+    host_id: EntryId,
+    key_id: EntryId,
+    /// Mot de passe pour ce seul déploiement, si l'hôte n'a pas d'identité. Sans lui, le
+    /// serveur pose ses questions (keyboard-interactive).
+    password: Option<SecretString>,
+}
+
+/// Prépare un déploiement à partir du coffre : cible, identifiants et ligne de clé publique,
+/// re-dérivée de la clé privée stockée (rien ne vient de l'interface).
+fn deploy_params(
+    data: &VaultData,
+    request: DeployRequest,
+    known_hosts: Arc<core_ssh::KnownHosts>,
+) -> Result<DeployParams, AppError> {
+    let (target, credentials) = host_target(data, request.host_id)?;
+    let credentials = match (credentials, request.password) {
+        (Some(credentials), None) => credentials,
+        // L'identité de l'hôte fait foi : un mot de passe en plus serait ignoré en silence.
+        (Some(_), Some(_)) => return Err(AppError::INVALID_INPUT),
+        (None, Some(password)) => Credentials::password(password)?,
+        (None, None) => Credentials::Interactive,
+    };
+    let private = decode_stored_key(&data.key(request.key_id)?.private_key)?;
+    let key = AuthorizedKeyLine::from_private(&private)?;
+    Ok(DeployParams {
+        target,
+        credentials,
+        key,
+        known_hosts,
+        timeouts: Timeouts::default(),
+    })
+}
+
+/// Déploie une clé publique du coffre sur un hôte du carnet (KEY-03). Le déroulé (clé d'hôte,
+/// questions du serveur, issue) arrive par `on_event`, comme pour une session ; le déploiement
+/// est fermé au verrouillage comme les autres sessions (ADR-026).
+#[tauri::command]
+pub fn key_deploy(
+    request: DeployRequest,
+    on_event: Channel<SessionEventDto>,
+    state: State<'_, SessionManager>,
+    vault: State<'_, VaultState>,
+) -> Result<SessionId, AppError> {
+    let known_hosts = state.known_hosts();
+    let params = vault.read(|vault| deploy_params(vault.data(), request, known_hosts))?;
+    vault.touch();
+    let host_pattern =
+        core_ssh::known_hosts::host_pattern(params.target.host(), params.target.port());
+    let id = state.insert_session(|_, remover| {
+        let sink = ChannelSink {
+            events: on_event,
+            output: None,
+            remover,
+            host_pattern,
+        };
+        SessionHandle::spawn_deploy(params, Arc::new(sink))
+    })?;
+    close_if_locked(id, &state, &vault)?;
+    tracing::debug!(session = id, "déploiement de clé démarré");
+    Ok(id)
 }
 
 /// Envoie la saisie de l'utilisateur. `binary` signale des octets bruts (chaque caractère
@@ -426,6 +582,13 @@ mod tests {
                 passphrase: None
             }
         ));
+
+        let request: ConnectRequest = serde_json::from_value(serde_json::json!({
+            "host": "srv", "port": 22, "username": "u", "cols": 80, "rows": 24,
+            "auth": { "kind": "interactive" }
+        }))
+        .unwrap();
+        assert!(matches!(request.auth, AuthRequest::Interactive {}));
     }
 
     #[test]
@@ -551,6 +714,118 @@ mod tests {
         assert_eq!(
             serde_json::to_value(event).unwrap(),
             serde_json::json!({ "type": "disconnected", "code": "ssh.auth_failed" })
+        );
+    }
+
+    #[test]
+    fn prompt_and_deploy_events_serialize_in_camel_case() {
+        let prompt = core_ssh::AuthPrompt::from_server(
+            "PAM",
+            "Saisir le code",
+            [("Verification code: ".to_owned(), false)],
+        )
+        .unwrap();
+        let event = SessionEventDto::from_event(SessionEvent::AuthPrompt { round: 2, prompt }, "");
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            serde_json::json!({
+                "type": "authPrompt",
+                "round": 2,
+                "name": "PAM",
+                "instructions": "Saisir le code",
+                "prompts": [{ "text": "Verification code: ", "echo": false }]
+            })
+        );
+        let event = SessionEventDto::from_event(SessionEvent::KeyDeployed { added: false }, "");
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            serde_json::json!({ "type": "keyDeployed", "added": false })
+        );
+    }
+
+    #[test]
+    fn deploy_request_is_strict() {
+        let id = "00000000-0000-4000-8000-000000000000";
+        let parsed: DeployRequest = serde_json::from_value(serde_json::json!({
+            "hostId": id, "keyId": id, "password": null
+        }))
+        .unwrap();
+        assert!(parsed.password.is_none());
+        // Une clé publique fournie par l'interface est refusée, pas ignorée.
+        let result = serde_json::from_value::<DeployRequest>(serde_json::json!({
+            "hostId": id, "keyId": id, "password": null, "publicKey": "ssh-ed25519 AAAA"
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deploy_params_come_from_the_vault() {
+        use core_vault::{HostInput, IdentityInput, NewKey, PasswordChange};
+
+        let mut data = VaultData::default();
+        let generated = core_ssh::generate_key(core_ssh::KeyKind::Ed25519).unwrap();
+        let public_key = generated.public_key.clone();
+        let key = data
+            .add_key(NewKey {
+                name: "clé".into(),
+                algorithm: generated.algorithm,
+                fingerprint: generated.fingerprint,
+                public_key: generated.public_key,
+                private_key: generated.private_key,
+            })
+            .unwrap();
+        let identity = data
+            .upsert_identity(IdentityInput {
+                id: None,
+                name: "id".into(),
+                username: "admin".into(),
+                password: PasswordChange::Set(SecretString::from("pw")),
+                key_id: None,
+            })
+            .unwrap();
+        let host = |data: &mut VaultData, identity_id| {
+            data.upsert_host(HostInput {
+                id: None,
+                name: "h".into(),
+                address: "srv.lab".into(),
+                port: 22,
+                username: "u".into(),
+                identity_id,
+                group_id: None,
+                tags: vec![],
+                notes: String::new(),
+            })
+            .unwrap()
+        };
+        let with_identity = host(&mut data, Some(identity));
+        let without = host(&mut data, None);
+        let known = || Arc::new(core_ssh::KnownHosts::new("known_hosts"));
+        let request = |host_id, password: Option<&str>| DeployRequest {
+            host_id,
+            key_id: key,
+            password: password.map(SecretString::from),
+        };
+
+        let params = deploy_params(&data, request(with_identity, None), known()).unwrap();
+        assert!(matches!(params.credentials, Credentials::Password(_)));
+        assert_eq!(params.target.username(), "u");
+        assert_eq!(params.key.as_str(), public_key);
+        assert_eq!(
+            deploy_params(&data, request(with_identity, Some("x")), known()).unwrap_err(),
+            AppError::INVALID_INPUT
+        );
+        let params = deploy_params(&data, request(without, Some("x")), known()).unwrap();
+        assert!(matches!(params.credentials, Credentials::Password(_)));
+        let params = deploy_params(&data, request(without, None), known()).unwrap();
+        assert!(matches!(params.credentials, Credentials::Interactive));
+        let unknown_key = DeployRequest {
+            host_id: without,
+            key_id: uuid_like(),
+            password: None,
+        };
+        assert_eq!(
+            deploy_params(&data, unknown_key, known()).unwrap_err(),
+            AppError::from(VaultError::EntryNotFound)
         );
     }
 }

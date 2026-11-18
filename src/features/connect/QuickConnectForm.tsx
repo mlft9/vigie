@@ -23,7 +23,11 @@ interface QuickConnectFormProps {
   onSubmit: (target: ConnectTarget, secrets: ConnectSecrets) => void;
 }
 
-/** Formulaire de connexion rapide (SSH-01) : hôte, port, utilisateur, mot de passe ou clé. */
+/**
+ * Formulaire de connexion rapide (SSH-01) : hôte, port, utilisateur, et mot de passe, clé ou
+ * questions du serveur (keyboard-interactive, AUTH-03). Quel que soit le choix, un serveur
+ * qui exige un second facteur (code TOTP) le demande ensuite dans une fenêtre dédiée.
+ */
 export function QuickConnectForm({ initial, errorCode, onSubmit }: QuickConnectFormProps) {
   const { t } = useTranslation();
   const id = useId();
@@ -179,8 +183,8 @@ export function QuickConnectForm({ initial, errorCode, onSubmit }: QuickConnectF
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1.5 text-sm font-medium">{t('connect.authMethod')}</legend>
-        <div className="flex gap-4">
-          {(['password', 'key'] as const).map((kind) => (
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {(['password', 'key', 'interactive'] as const).map((kind) => (
             <label key={kind} className="flex items-center gap-2 text-sm">
               <input
                 type="radio"
@@ -199,7 +203,11 @@ export function QuickConnectForm({ initial, errorCode, onSubmit }: QuickConnectF
         </div>
       </fieldset>
 
-      {authKind === 'password' ? (
+      {authKind === 'interactive' && (
+        <p className="text-sm text-muted-foreground">{t('connect.interactiveHint')}</p>
+      )}
+
+      {authKind === 'password' && (
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${id}-password`} className="text-sm font-medium">
             {t('connect.password')}
@@ -216,7 +224,9 @@ export function QuickConnectForm({ initial, errorCode, onSubmit }: QuickConnectF
             maxLength={1024}
           />
         </div>
-      ) : (
+      )}
+
+      {authKind === 'key' && (
         <>
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">{t('connect.keyFile')}</span>

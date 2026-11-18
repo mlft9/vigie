@@ -2,6 +2,7 @@ import { LoaderCircle, RotateCw, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
+import { AuthPromptDialog } from '@/features/connect/AuthPromptDialog';
 import { ErrorMessage } from '@/features/connect/ErrorMessage';
 import { HostKeyChangedAlert } from '@/features/connect/HostKeyChangedAlert';
 import { HostKeyDialog } from '@/features/connect/HostKeyDialog';
@@ -100,6 +101,18 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
           port={target.port}
           hostKey={tab.pendingHostKey}
           onDecision={(accept) => void terminalSession(tab.id).decideHostKey(accept)}
+        />
+      )}
+
+      {tab.status === 'authPrompt' && tab.pendingPrompt && target && (
+        <AuthPromptDialog
+          // Nouvelle instance à chaque demande : les champs repartent vides.
+          key={JSON.stringify(tab.pendingPrompt)}
+          address={target.port === 22 ? target.host : `${target.host}:${target.port}`}
+          prompt={tab.pendingPrompt}
+          errorCode={tab.errorCode}
+          onSubmit={(answers) => void terminalSession(tab.id).answerPrompt(answers)}
+          onCancel={() => void terminalSession(tab.id).answerPrompt(null)}
         />
       )}
 
