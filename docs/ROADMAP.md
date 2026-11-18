@@ -8,7 +8,7 @@ Les identifiants (SSH-01, VLT-02…) renvoient au `docs/CAHIER_DES_CHARGES.md`.
 | # | Étape | Statut |
 |---|---|---|
 | 0 | Fondations | ✅ |
-| 1 | Terminal SSH multi-onglets | 🟨 |
+| 1 | Terminal SSH multi-onglets | ✅ |
 | 2 | Coffre chiffré et carnet d'hôtes | ⬜ |
 | 3 | 2FA et générateur de clés | ⬜ |
 | 4 | SFTP | ⬜ |
@@ -70,13 +70,13 @@ Contenu :
 - Tests d'intégration contre un `sshd` en conteneur (CI) ou une VM du lab (en local).
 
 **Critères d'acceptation**
-- [ ] Connexion à la VM Debian du lab, par mot de passe puis par clé avec passphrase.
-- [ ] vim, htop, tmux et les couleurs s'affichent correctement. Le redimensionnement de la fenêtre est répercuté.
-- [ ] Trois onglets ouverts en parallèle sur des hôtes différents.
-- [ ] Première connexion : l'empreinte est affichée et doit être acceptée.
-- [ ] Après régénération des clés d'hôte de la VM : connexion **bloquée** avec une alerte claire.
-- [ ] Couper le réseau de la VM : l'onglet passe à « déconnecté » et propose de se reconnecter, sans planter.
-- [ ] `cat` d'un gros fichier : l'interface reste réactive.
+- [x] Connexion à la VM Debian du lab, par mot de passe puis par clé avec passphrase.
+- [x] vim, htop, tmux et les couleurs s'affichent correctement. Le redimensionnement de la fenêtre est répercuté.
+- [x] Trois onglets ouverts en parallèle sur des hôtes différents.
+- [x] Première connexion : l'empreinte est affichée et doit être acceptée.
+- [x] Après régénération des clés d'hôte de la VM : connexion **bloquée** avec une alerte claire.
+- [x] Couper le réseau de la VM : l'onglet passe à « déconnecté » et propose de se reconnecter, sans planter.
+- [x] `cat` d'un gros fichier : l'interface reste réactive.
 
 ---
 

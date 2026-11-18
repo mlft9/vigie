@@ -2,7 +2,7 @@
 
 Client **SSH / SFTP / RDP** de bureau pour **Windows et Linux**, dans l'esprit de MobaXterm et Termius, avec la sécurité comme priorité.
 
-> 🚧 **Statut** : étape 1 (Terminal SSH multi-onglets) livrée, en cours de validation : connexion SSH par mot de passe ou par clé, vérification stricte des clés d'hôte, terminal en onglets. Pas encore de coffre : aucun hôte ni identifiant n'est mémorisé entre deux lancements. Avancement détaillé dans la [feuille de route](docs/ROADMAP.md).
+> 🚧 **Statut** : étape 1 (Terminal SSH multi-onglets) validée : connexion SSH par mot de passe ou par clé, vérification stricte des clés d'hôte, terminal en onglets. Pas encore de coffre : aucun hôte ni identifiant n'est mémorisé entre deux lancements. Avancement détaillé dans la [feuille de route](docs/ROADMAP.md).
 
 ## Fonctionnalités prévues
 - Terminal SSH multi-onglets, écran partagé, diffusion de commandes vers plusieurs serveurs
