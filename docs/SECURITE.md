@@ -17,7 +17,7 @@
 |---|---|---|
 | M1 | Vol du fichier de coffre (PC volé, sauvegarde qui fuite, malware qui exfiltre le fichier) puis attaque par force brute hors ligne | Chiffrement fort, Argon2id coûteux, mot de passe maître robuste exigé (§3) |
 | M2 | Homme du milieu sur le réseau | Vérification des clés d'hôte (TOFU strict), certificats RDP (§4) |
-| M3 | Serveur malveillant ou compromis | Validation des noms de fichiers SFTP, filtrage des séquences d'échappement dangereuses, pas d'agent forwarding (§4, §6) |
+| M3 | Serveur malveillant ou compromis | Validation des noms de fichiers SFTP, filtrage des séquences d'échappement dangereuses, questions keyboard-interactive nettoyées, bornées et signalées comme venant du serveur (anti-hameçonnage), pas d'agent forwarding (§4, §6) |
 | M4 | Dépendance npm compromise exécutée dans la WebView | Secrets absents de la WebView, CSP, capabilities minimales, `cargo-deny` / `npm audit` (§5, §8) |
 | M5 | Fuite par effet de bord : journaux, liste des processus, messages d'erreur, fichiers temporaires, presse-papiers | Règles du §6 |
 | M6 | Mise à jour piégée | Mises à jour signées, clé privée hors du dépôt (§7) |

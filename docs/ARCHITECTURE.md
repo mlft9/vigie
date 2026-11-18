@@ -1,6 +1,6 @@
 # Architecture
 
-> Reflète le code à la fin de l'étape 2 (Coffre chiffré et carnet d'hôtes). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
+> Reflète le code à la fin de l'étape 3 (2FA et générateur de clés). L'agent `docs-keeper` la met à jour à chaque étape. Les éléments marqués « à venir » sont prévus mais pas encore dans le code.
 
 ## 1. Vue d'ensemble
 
@@ -50,7 +50,7 @@ Traits pleins : en place. Pointillés : à venir.
 
 ## 2. Découpage du code
 
-État actuel (étape 2) :
+État actuel (étape 3) :
 
 ```
 .
@@ -66,8 +66,12 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   │                         (useVaultSession), estimation zxcvbn-ts chargée à la demande (strength.ts)
 │   │   ├── hosts/                Carnet d'hôtes : liste par groupe, recherche (filter.ts), formulaire,
 │   │   │                         ouverture d'une session depuis le carnet (openHost.ts)
-│   │   ├── keys/                 Clés importées, identités, clés d'hôte connues (HKY-04)
-│   │   ├── connect/              Connexion rapide, dialogue de clé d'hôte inconnue, alerte de clé modifiée
+│   │   ├── keys/                 Clés générées (KeyGenerateDialog) ou importées, export de la clé
+│   │   │                         publique, déploiement sur un hôte (KeyDeployDialog), identités,
+│   │   │                         clés d'hôte connues (HKY-04)
+│   │   ├── connect/              Connexion rapide (dont le mode « Questions du serveur (2FA) »), dialogue
+│   │   │                         des questions du serveur (AuthPromptDialog), dialogue de clé d'hôte
+│   │   │                         inconnue, alerte de clé modifiée
 │   │   ├── terminal/             Contrôleur xterm.js par onglet (TerminalSession), vue, recherche,
 │   │   │                         menu contextuel, garde de collage, liens, file de saisie
 │   │   ├── shortcuts/            Raccourcis clavier (Ctrl+Maj), blocage du rechargement hors terminal
@@ -98,9 +102,11 @@ Traits pleins : en place. Pointillés : à venir.
 │   │   ├── settings.rs           SettingsStore : settings.json validé, écriture atomique
 │   │   ├── commands/app.rs       Commande app_info
 │   │   ├── commands/ssh.rs       Commandes ssh_* : validation, appel à core-ssh, deux Channel par session ;
-│   │   │                         ssh_connect_host (identité lue dans le coffre)
+│   │   │                         ssh_connect_host (identité lue dans le coffre), ssh_auth_answer (2FA),
+│   │   │                         key_deploy (déploiement de clé)
 │   │   ├── commands/vault.rs     Commandes vault_* (cycle de vie du coffre) et lock_everything
-│   │   ├── commands/book.rs      Carnet : vault_snapshot, host_*, group_*, identity_*, key_*, known_host_*
+│   │   ├── commands/book.rs      Carnet : vault_snapshot, host_*, group_*, identity_*, key_* (dont
+│   │   │                         key_generate et key_export_public), known_host_*
 │   │   ├── commands/settings.rs  settings_get, settings_set
 │   │   ├── commands/url.rs       open_external_url : revalidation http(s), ouverture via la crate open
 │   │   ├── error.rs              AppError { code } sérialisable, conversion depuis SshError et VaultError
@@ -114,12 +120,19 @@ Traits pleins : en place. Pointillés : à venir.
 │   ├── core-ssh/                 Client SSH, sans dépendance à Tauri ni à core-vault
 │   │   ├── src/
 │   │   │   ├── target.rs         Cible (hôte, port, utilisateur) et taille du terminal, validées
-│   │   │   ├── auth.rs           Mot de passe, clés privées ; import (ré-encodage sans passphrase),
-│   │   │   │                     identité « clé puis mot de passe »
+│   │   │   ├── auth.rs           Moyens d'authentification (Credentials : mot de passe, clé, clé puis
+│   │   │   │                     mot de passe, Interactive) ; import (ré-encodage sans passphrase)
+│   │   │   ├── prompt.rs         Questions keyboard-interactive : nettoyage, bornes, reconnaissance
+│   │   │   │                     stricte de la question « mot de passe », réponses (PromptAnswers)
+│   │   │   ├── keygen.rs         Génération de clés (Ed25519, ECDSA P-256/384/521, RSA 4096), aléa du système
+│   │   │   ├── deploy.rs         Déploiement dans authorized_keys : commande constante, ligne de clé
+│   │   │   │                     validée (AuthorizedKeyLine) envoyée par l'entrée standard
 │   │   │   ├── config.rs         Algorithmes autorisés (liste explicite) et délais
 │   │   │   ├── known_hosts.rs    Vérification, ajout, liste et suppression des clés d'hôte (format
 │   │   │   │                     OpenSSH), stockage abstrait (trait KnownHostsStorage, FileStorage)
-│   │   │   ├── session.rs        Tâche de session : connexion, TOFU, auth, PTY, E/S, contrôle de flux
+│   │   │   ├── session.rs        Tâche de session (SessionHandle) : connexion, TOFU, authentification en
+│   │   │   │                     plusieurs méthodes, PTY, E/S, contrôle de flux ; ou déploiement de clé
+│   │   │   │                     (spawn_deploy) sur le même chemin
 │   │   │   └── error.rs          SshError et ses codes stables ssh.*
 │   │   └── tests/                local_server.rs (serveur russh en mémoire), openssh.rs (#[ignore]),
 │   │                             fixtures/test_host_*.pub (clés publiques uniquement)
@@ -169,13 +182,22 @@ Traits pleins : en place. Pointillés : à venir.
 
 Toutes sous licence MIT ou MIT/Apache-2.0.
 
+### Dépendance ajoutée à l'étape 3
+| Dépendance | Rôle | Note |
+|---|---|---|
+| `getrandom` 0.4.3 (`sys_rng`), dans `core-ssh` | Générateur du système (`SysRng`, équivalent d'`OsRng`) pour la génération de clés (ADR-032) | MIT OR Apache-2.0 ; déjà dans l'arbre via `core-vault`. `sys_rng` réexporte `rand_core` 0.10, déjà présent via `ssh-key` |
+
+Aucune dépendance npm ajoutée.
+
 **Dépendances entre crates** : `core-ssh` et `core-vault` ne dépendent pas l'une de l'autre (ADR-004). C'est `src-tauri` qui fait le lien :
 - il lit une identité dans le coffre (mot de passe, clé privée) et la passe à `core-ssh` sous forme de `Credentials` ;
+- il stocke dans le coffre une clé générée par `core-ssh` (`generate_key`), comme une clé importée ;
+- pour un déploiement, il re-dérive la ligne de clé publique de la clé privée du coffre (`AuthorizedKeyLine::from_private`) ;
 - il implémente le trait `KnownHostsStorage` de `core-ssh` pour le coffre (`VaultKnownHosts`, ADR-027).
 
 Les futures crates `core-term`, `core-import` et `core-rdp` suivront la même règle.
 
-**Règles de compilation communes (workspace)** : edition 2024, `unsafe_code = "forbid"`, et `unwrap`, `expect`, `panic`, `dbg!`, `todo!` interdits par clippy hors tests. En profil `dev`, `argon2` et `blake2` sont compilés en `opt-level = 3` : sans cela, une dérivation Argon2id (64 Mio, 3 passes) rendrait les tests du coffre et `npm run tauri dev` très lents. Sans effet sur la compilation de production.
+**Règles de compilation communes (workspace)** : edition 2024, `unsafe_code = "forbid"`, et `unwrap`, `expect`, `panic`, `dbg!`, `todo!` interdits par clippy hors tests. En profil `dev`, `argon2`, `blake2`, `rsa`, `crypto-bigint` et `crypto-primes` sont compilés en `opt-level = 3` : sans cela, une dérivation Argon2id (64 Mio, 3 passes) ou la génération d'une clé RSA 4096 rendraient les tests et `npm run tauri dev` très lents. Sans effet sur la compilation de production.
 
 ## 3. Communication interface ↔ cœur
 
@@ -199,6 +221,7 @@ Session SSH et utilitaires :
 | `ssh_resize` | `sessionId`, `cols` (1–1000), `rows` (1–500) | aucune | `allow-ssh-resize` |
 | `ssh_ack` | `sessionId`, `bytes` (octets affichés) | aucune | `allow-ssh-ack` |
 | `ssh_host_key_decision` | `sessionId`, `accept` | aucune | `allow-ssh-host-key-decision` |
+| `ssh_auth_answer` | `sessionId`, `round` (numéro de la demande), `answers[] \| null` (`null` = annuler) ; une réponse par question, 1 Kio max chacune | aucune ; `ssh.no_pending_prompt` si rien n'attend pour ce tour | `allow-ssh-auth-answer` |
 | `ssh_close` | `sessionId` | aucune | `allow-ssh-close` |
 | `ssh_pick_key_file` | aucune (boîte de dialogue ouverte par le cœur) | `{ id, name } \| null` : identifiant opaque et nom du fichier, jamais le chemin | `allow-ssh-pick-key-file` |
 | `open_external_url` | `url` (`http:`/`https:`, 2048 caractères max, revalidée) | aucune | `allow-open-external-url` |
@@ -228,6 +251,9 @@ Carnet, clés et paramètres :
 | `identity_save` | `request { id \| null, name, username, password, keyId }` | `EntryId` | `allow-identity-save` |
 | `identity_delete` | `id` (refusé si un hôte l'utilise) | aucune | `allow-identity-delete` |
 | `key_import` | `request { keyFileId, name, passphrase \| null }` (`keyFileId` issu de `ssh_pick_key_file`) | `{ id, name, algorithm, fingerprint, publicKey }` | `allow-key-import` |
+| `key_generate` | `request { name, kind }`, `kind` = `ed25519`, `ecdsaP256`, `ecdsaP384`, `ecdsaP521` ou `rsa4096` | même forme que `key_import` | `allow-key-generate` |
+| `key_export_public` | `id` (boîte de dialogue d'enregistrement ouverte par le cœur, extension `.pub` imposée) | `true`, ou `false` si l'utilisateur annule ; le chemin ne remonte pas | `allow-key-export-public` |
+| `key_deploy` | `request { hostId, keyId, password \| null }` (mot de passe seulement si l'hôte n'a pas d'identité), `onEvent: Channel<SessionEventDto>` | `SessionId` (même pilotage qu'une session : clé d'hôte, questions, fermeture) | `allow-key-deploy` |
 | `key_rename` | `id`, `name` | aucune | `allow-key-rename` |
 | `key_delete` | `id` (refusé si une identité l'utilise) | aucune | `allow-key-delete` |
 | `known_host_list` | aucune | `[{ line, hosts, algorithm, fingerprint, revoked }]` | `allow-known-host-list` |
@@ -235,11 +261,11 @@ Carnet, clés et paramètres :
 | `settings_get` | aucune (lisible avant le déverrouillage) | `{ settings { language, theme, terminalFontSize }, firstRun }` | `allow-settings-get` |
 | `settings_set` | `settings { language, theme, terminalFontSize }` | aucune | `allow-settings-set` |
 
-**Secrets en entrée** : seuls `ssh_connect` (`auth`), `vault_create`, `vault_unlock`, `vault_change_password`, `identity_save` (`password`) et `key_import` (`passphrase`) en transportent, une seule fois. Côté Rust, ils sont placés dans un `SecretString` dès la désérialisation. **Aucune commande n'en renvoie** :
-- `auth` vaut `{ kind: "password", password }` ou `{ kind: "key", keyFileId, passphrase | null }` ;
+**Secrets en entrée** : seuls `ssh_connect` (`auth`), `ssh_auth_answer` (`answers`), `vault_create`, `vault_unlock`, `vault_change_password`, `identity_save` (`password`), `key_import` (`passphrase`) et `key_deploy` (`password`) en transportent, une seule fois. Côté Rust, ils sont placés dans un `SecretString` dès la désérialisation. **Aucune commande n'en renvoie** :
+- `auth` vaut `{ kind: "password", password }`, `{ kind: "key", keyFileId, passphrase | null }` ou `{ kind: "interactive" }` (aucun secret d'avance : le serveur pose ses questions, ADR-031) ;
 - le `password` d'une identité vaut `{ action: "keep" }`, `{ action: "clear" }` ou `{ action: "set", value }` ;
 - une identité renvoyée par `vault_snapshot` est `{ id, name, username, hasPassword, keyId }` : la présence d'un mot de passe, jamais sa valeur ;
-- une clé est renvoyée avec sa seule partie publique (sans commentaire) et son empreinte ; un hôte avec ses champs descriptifs.
+- une clé, importée ou générée, est renvoyée avec sa seule partie publique (sans commentaire) et son empreinte ; un hôte avec ses champs descriptifs. Aucune commande n'exporte une clé privée (ADR-032).
 
 **Validation** : les structures Rust refusent les champs inconnus (`deny_unknown_fields`) ; un `EntryId` doit être un UUID ; adresse, port et utilisateur d'un hôte passent par les mêmes règles que la connexion SSH ; noms, étiquettes, notes et nombres d'entrées sont bornés dans `core-vault` (`model.rs`). Toute commande du carnet sur un coffre verrouillé renvoie `vault.locked`.
 
@@ -251,7 +277,9 @@ Carnet, clés et paramètres :
 |---|---|---|
 | `hostKeyUnknown` | `key { algorithm, fingerprint }` | Première connexion : attendre `ssh_host_key_decision` (120 s) |
 | `hostKeyChanged` | `key`, `known[]`, `hostPattern` | Clé différente de celle enregistrée : connexion refusée. L'alerte renvoie vers Clés > Clés d'hôte connues pour débloquer (HKY-04) |
-| `authenticating` | aucun | Clé d'hôte acceptée, authentification en cours |
+| `authenticating` | aucun | Clé d'hôte acceptée, authentification en cours ; émis à nouveau après chaque réponse aux questions du serveur |
+| `authPrompt` | `round`, `name`, `instructions`, `prompts[{ text, echo }]` | Le serveur pose des questions (keyboard-interactive) : attendre `ssh_auth_answer` avec le même `round` (2 min). Texte nettoyé et borné par le cœur, affiché en texte brut |
+| `keyDeployed` | `added` (`true` : ajoutée ; `false` : déjà présente) | Déploiement réussi (`key_deploy`) ; `disconnected` (`ssh.session_ended`) suit aussitôt |
 | `connected` | aucun | Shell ouvert |
 | `disconnected` | `code` (`ssh.*`) | Fin de session, toujours le dernier événement |
 
@@ -261,7 +289,7 @@ La sortie du terminal passe sur `onOutput` en **octets bruts**, par lots de 8 ms
 
 **Contrôle de flux** (ADR-024) : l'interface acquitte par `ssh_ack` les octets affichés par xterm.js. Au-delà de 2 Mio non acquittés, la session arrête de lire le canal SSH ; le serveur est alors freiné par la fenêtre SSH. La saisie part par une file côté interface (`inputQueue.ts`) : un seul `ssh_write` en cours, pour que les frappes ne soient jamais réordonnées.
 
-**Cycle de vie d'une session** : chaque session vit dans une tâche tokio annulable (`SessionHandle`), enregistrée dans `SessionManager` (64 au plus). Elle se retire d'elle-même à l'événement `disconnected`. Tout verrouillage du coffre ferme toutes les sessions (voir ci-dessous).
+**Cycle de vie d'une session** : chaque session vit dans une tâche tokio annulable (`SessionHandle`), enregistrée dans `SessionManager` (64 au plus). Un déploiement de clé (`SessionHandle::spawn_deploy`) est une session sans terminal : il compte dans cette limite, se pilote par les mêmes commandes et se ferme au verrouillage (ADR-033). Elle se retire d'elle-même à l'événement `disconnected`. Tout verrouillage du coffre ferme toutes les sessions (voir ci-dessous).
 
 ### Coffre : états et verrouillage
 
@@ -354,7 +382,7 @@ sequenceDiagram
     else clé marquée @revoked
         S-->>UI: disconnected ssh.host_key_revoked
     end
-    S->>SRV: authentification (mot de passe, clé, ou clé puis mot de passe, RSA en SHA-2)
+    S->>SRV: authentification (voir le schéma suivant)
     S->>SRV: PTY xterm-256color + shell
     S-->>UI: connected
     loop session
@@ -365,7 +393,46 @@ sequenceDiagram
     S-->>UI: disconnected(code)
 ```
 
-Délais (`config.rs`) : connexion TCP 15 s, poignée de main 20 s, décision sur la clé d'hôte 120 s, authentification et ouverture du shell 30 s, keepalive toutes les 15 s, connexion déclarée perdue après 3 keepalives sans réponse. Les bannières du serveur sont affichées comme texte brut, nettoyées de toute séquence de contrôle (8 Kio par bannière, 64 Kio par session).
+Délais (`config.rs`) : connexion TCP 15 s, poignée de main 20 s, décision sur la clé d'hôte 120 s, chaque échange réseau de l'authentification et l'ouverture du shell 30 s, temps réseau cumulé de l'authentification 60 s (hors saisie), réponse aux questions du serveur 2 min par demande, keepalive toutes les 15 s, connexion déclarée perdue après 3 keepalives sans réponse. Les bannières du serveur sont affichées comme texte brut, nettoyées de toute séquence de contrôle (8 Kio par bannière, 64 Kio par session).
+
+### Authentification en plusieurs méthodes et 2FA (ADR-031)
+
+```mermaid
+sequenceDiagram
+    participant UI as Interface
+    participant C as src-tauri
+    participant S as core-ssh
+    participant SRV as Serveur SSH
+    S->>SRV: méthode none
+    SRV-->>S: méthodes acceptées
+    loop selon les méthodes restantes (succès partiels compris), chaque moyen une fois
+        alt publickey proposée et clé disponible
+            S->>SRV: clé (RSA en SHA-2)
+        else password proposée et mot de passe disponible
+            S->>SRV: mot de passe
+        else keyboard-interactive proposée (une fois)
+            loop 16 demandes au plus
+                SRV-->>S: demande (8 questions au plus)
+                alt question unique sans écho « Password » / « Mot de passe », mot de passe enregistré inutilisé
+                    S->>SRV: mot de passe enregistré (une fois)
+                else autres questions
+                    S-->>UI: authPrompt(round, questions nettoyées)
+                    UI->>C: ssh_auth_answer(sessionId, round, réponses ou null)
+                    C->>S: answer_prompts (bon tour, bon nombre de réponses)
+                    S-->>UI: authenticating
+                    S->>SRV: réponses
+                end
+            end
+        end
+        SRV-->>S: succès, succès partiel ou échec (méthodes restantes)
+    end
+```
+
+Aucun moyen restant compatible avec ce que propose le serveur : `ssh.auth_failed`. Annulation : `ssh.auth_cancelled` ; délai de saisie dépassé : `ssh.auth_prompt_timeout` ; demande hors bornes : `ssh.auth_prompt_invalid`. Fermer l'onglet ou verrouiller le coffre interrompt l'authentification.
+
+### Déploiement d'une clé (KEY-03, ADR-033)
+
+`key_deploy` désigne un hôte du carnet et une clé du coffre. Le cœur prend l'identité de l'hôte, sinon le mot de passe saisi pour ce seul déploiement, sinon `Credentials::Interactive` ; il re-dérive la ligne `algorithme base64` de la clé privée et lance `SessionHandle::spawn_deploy`. Connexion, TOFU et authentification suivent les deux schémas ci-dessus. Une fois authentifié, le cœur ouvre un canal, exécute la commande constante `sh -c '…'` et envoie la ligne de clé sur l'entrée standard. Le script répond `YOUNJI_ADDED` ou `YOUNJI_PRESENT` (sortie lue sur 1 Kio au plus) ; tout autre résultat donne `ssh.deploy_failed`. Chaque étape du canal est bornée à 30 s et le déploiement entier à 60 s une fois authentifié. La session se termine ensuite (`keyDeployed`, puis `disconnected`).
 
 Pour un hôte du carnet, l'utilisateur de l'hôte prime ; s'il est vide, celui de l'identité est utilisé. Un hôte sans identité ne passe pas par `ssh_connect_host` (`book.no_identity`) : l'interface ouvre le formulaire de connexion rapide pré-rempli. La reconnexion d'un onglet ouvert depuis le carnet rappelle `ssh_connect_host`, sans rien redemander (ADR-030).
 
@@ -387,7 +454,7 @@ Pour un hôte du carnet, l'utilisateur de l'hôte prime ; s'il est vide, celui d
 
 **Clés d'hôte connues** : ce n'est plus un fichier. Elles sont dans le coffre (ADR-027), ce qui tranche le point ouvert d'ADR-006 et d'ADR-023. Un fichier `known_hosts` en clair laissé par l'étape 1 est repris à la création du coffre, puis supprimé. Une clé d'hôte se supprime dans Clés > Clés d'hôte connues (HKY-04).
 
-**Fichiers de clé privée** : jamais lus en dehors d'une connexion rapide ou d'un import. Leur chemin reste en mémoire dans `SessionManager` pendant l'exécution, derrière un identifiant opaque (ADR-020). Une clé importée est stockée dans le coffre, sans sa passphrase d'origine (ADR-030) ; le fichier d'origine n'est ni modifié ni supprimé.
+**Fichiers de clé privée** : jamais lus en dehors d'une connexion rapide ou d'un import. Leur chemin reste en mémoire dans `SessionManager` pendant l'exécution, derrière un identifiant opaque (ADR-020). Une clé importée est stockée dans le coffre, sans sa passphrase d'origine (ADR-030) ; le fichier d'origine n'est ni modifié ni supprimé. Une clé générée n'existe que dans le coffre ; seule sa clé publique peut être exportée, dans un fichier `.pub` choisi par l'utilisateur (ADR-032).
 
 **Préférences** : `settings.json`, lu par `settings_get` avant le premier rendu (la langue est fixée tout de suite). Le délai de verrouillage n'y figure pas : il est dans le coffre, authentifié (ADR-028). Au premier lancement de l'étape 2 (`firstRun`), les anciennes valeurs du `localStorage` (clé `younji.settings`, étape 1) sont reprises une fois, validées, puis la clé est supprimée.
 
@@ -401,9 +468,9 @@ Pour un hôte du carnet, l'utilisateur de l'hôte prime ; s'il est vide, celui d
 ## 5. Gestion des erreurs
 1. Les crates renvoient des erreurs `thiserror` précises. `SshError` (`core-ssh`) et `VaultError` (`core-vault`) ne transportent aucune donnée : ni secret, ni entrée utilisateur, ni texte du serveur.
 2. `src-tauri` les convertit en `AppError { code }`. Seul le code est sérialisé. Un test Rust vérifie que chaque code a sa traduction FR et EN.
-   - `ssh.*` : par exemple `ssh.auth_failed`, `ssh.host_key_changed`, `ssh.connection_lost`.
+   - `ssh.*` : par exemple `ssh.auth_failed`, `ssh.host_key_changed`, `ssh.connection_lost`. Ajoutés à l'étape 3 : `auth_prompt_invalid`, `auth_prompt_timeout`, `auth_cancelled`, `no_pending_prompt`, `invalid_answers`, `key_generation_failed`, `invalid_public_key`, `deploy_failed`.
    - `vault.*` (`VaultError`) : `not_found`, `already_exists`, `backup_only`, `locked`, `wrong_password_or_corrupted`, `invalid_file`, `unsupported_version`, `kdf_params_rejected`, `io`, `random_unavailable`, `password_too_short`, `password_too_weak`, `invalid_name`, `invalid_address`, `invalid_port`, `invalid_username`, `invalid_tags`, `invalid_notes`, `invalid_secret`, `identity_incomplete`, `invalid_auto_lock`, `too_many_entries`, `entry_not_found`, `key_in_use`, `identity_in_use`, `known_hosts_too_large`. Toute erreur de déchiffrement donne **le même** code, `vault.wrong_password_or_corrupted`, pour ne pas distinguer un mauvais mot de passe d'un fichier altéré.
-   - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `internal`.
+   - Codes propres à `src-tauri` : `ssh.session_not_found`, `ssh.too_many_sessions`, `ssh.key_file_unknown`, `dialog.failed`, `url.invalid`, `url.open_failed`, `book.no_identity`, `settings.invalid`, `settings.io`, `keys.export_failed`, `internal`.
 3. `src/lib/ipc.ts` normalise toute erreur reçue en `{ code }` ; un message brut n'est jamais propagé, et une erreur de forme inattendue devient `unknown`.
 4. L'interface affiche `t('errors.<code>')`. Le détail technique part dans les journaux, **sans secret**.
 
@@ -411,8 +478,8 @@ Pour un hôte du carnet, l'utilisateur de l'hôte prime ; s'il est vide, celui d
 - **Porte du coffre** (`features/vault/`) : au premier lancement, création du coffre (mot de passe et confirmation, indicateur de robustesse en direct, avertissement « aucune récupération possible ») ; ensuite, écran de déverrouillage, avec la cause du dernier verrouillage. Rien d'autre n'est affiché tant que le coffre est verrouillé.
 - Mise en page type Termius : barre latérale (Hôtes, Clés, Snippets, Tunnels, SFTP, Paramètres, et bouton « Verrouiller ») et zone d'onglets. Le premier onglet (accueil) affiche la section choisie ; Snippets, Tunnels et SFTP affichent encore un emplacement réservé.
 - **Carnet d'hôtes** (`features/hosts/`, HST-01, HST-02) : hôtes classés par groupe (un seul niveau), filtre « tous / sans groupe / groupe », recherche instantanée sur le nom, l'adresse, l'utilisateur et les étiquettes (insensible à la casse et aux accents) ; création, modification, suppression (avec confirmation) ; double-clic pour se connecter (`openHost.ts`).
-- **Clés** (`features/keys/`, KEY-02, HST-03, HKY-04) : clés importées (import par la boîte de dialogue du système, renommage, copie de la clé publique, suppression), identités (utilisateur, mot de passe et/ou clé), clés d'hôte connues (liste, suppression après un avertissement qui rappelle de vérifier l'empreinte).
-- **Onglets de session** (`stores/sessions.ts`, `TabBar`) : ouvrir, fermer, renommer (double-clic ou F2), réordonner (glisser ou raccourci). États : `form` → `connecting` → `hostKey` → `authenticating` → `connected` → `disconnected`, ou `blocked` si la clé d'hôte a changé. Le store ne contient **aucun secret** : pour un hôte du carnet, il garde l'identifiant de l'hôte ; pour une connexion rapide, la cible sert à pré-remplir le formulaire de reconnexion, qui redemande le mot de passe ou la passphrase (ADR-021). L'alerte de clé modifiée propose d'ouvrir la gestion des clés d'hôte.
+- **Clés** (`features/keys/`, KEY-01 à KEY-03, HST-03, HKY-04) : clés générées dans le coffre (`KeyGenerateDialog`, Ed25519 par défaut) ou importées (boîte de dialogue du système) ; renommage, copie et export `.pub` de la clé publique, déploiement sur un hôte du carnet (`KeyDeployDialog`, qui reprend les dialogues de clé d'hôte et de questions du serveur), suppression ; identités (utilisateur, mot de passe et/ou clé), clés d'hôte connues (liste, suppression après un avertissement qui rappelle de vérifier l'empreinte).
+- **Onglets de session** (`stores/sessions.ts`, `TabBar`) : ouvrir, fermer, renommer (double-clic ou F2), réordonner (glisser ou raccourci). États : `form` → `connecting` → `hostKey` → `authenticating` (↔ `authPrompt`) → `connected` → `disconnected`, ou `blocked` si la clé d'hôte a changé. En `authPrompt`, l'onglet affiche `AuthPromptDialog` : hôte qui pose les questions, texte du serveur encadré comme « Message envoyé par le serveur », rappel que Younji ne demande jamais le mot de passe maître ici ; réponses masquées sauf si le serveur autorise l'écho, champs vidés dès l'envoi. Le store garde la demande en attente, jamais les réponses. La connexion rapide propose un troisième mode, « Questions du serveur (2FA) », sans aucun secret saisi d'avance. Le store ne contient **aucun secret** : pour un hôte du carnet, il garde l'identifiant de l'hôte ; pour une connexion rapide, la cible sert à pré-remplir le formulaire de reconnexion, qui redemande le mot de passe ou la passphrase (ADR-021). L'alerte de clé modifiée propose d'ouvrir la gestion des clés d'hôte.
 - **Terminal** (`features/terminal/`) : un contrôleur `TerminalSession` par onglet, hors de React, qui garde l'instance xterm.js, son tampon (10 000 lignes) et sa session quand l'onglet est masqué. Taille de police réglable, appliquée à chaud. Addons fit (avec `ResizeObserver` et anti-rebond de 100 ms vers `ssh_resize`), search, web-links, unicode11 et WebGL (repli sur le rendu DOM si WebGL est indisponible). Au verrouillage, tous les contrôleurs sont détruits.
 - **Protections du terminal** : pas d'addon presse-papiers, donc les séquences OSC 52 restent sans effet ; garde de collage (`paste.ts`) qui retire les marqueurs de « bracketed paste » et demande confirmation, avec aperçu, pour un texte multiligne ou contenant des caractères de contrôle ; liens `http(s)` ouverts au Ctrl+clic, avec confirmation de l'adresse réelle pour les liens OSC 8 (`links.ts`, ADR-022).
 - **Raccourcis** (`features/shortcuts/`) : tous en Ctrl+Maj (ou Ctrl+Tab, Ctrl+PgPréc/PgSuiv) pour laisser au shell ses propres raccourcis, dont Ctrl+Maj+L pour verrouiller ; liste affichée dans les Paramètres. Hors du terminal, F5 et Ctrl+R sont bloqués, car un rechargement verrouille le coffre et ferme toutes les sessions.
@@ -431,8 +498,8 @@ Pour un hôte du carnet, l'utilisateur de l'hôte prime ; s'il est vide, celui d
 `cargo test -p core-vault` : aller-retour création / déverrouillage ; mauvais mot de passe (code générique) ; un octet modifié à n'importe quelle position refusé ; paramètres Argon2 hors bornes et longueurs incohérentes refusés avant allocation ; nonce neuf à chaque sauvegarde et `.bak` présent ; changement de mot de passe (sel et DEK renouvelés) ; création qui n'écrase rien et refuse un `.bak` orphelin ; aucun nom d'hôte lisible dans le fichier ; permissions 0600/0700 sous Linux ; politique de mot de passe ; validation du modèle et intégrité référentielle ; `Debug` sans secret. Côté `src-tauri` : délai progressif, double horloge du minuteur, DTO sans secret, désérialisation stricte, connexion depuis le carnet selon l'identité.
 
 ### Tests SSH
-- **Sans serveur externe** (`cargo test`) : `crates/core-ssh/tests/local_server.rs` lance un serveur russh en mémoire sur 127.0.0.1 et vérifie le TOFU, le blocage d'une clé modifiée (y compris d'un autre type), l'authentification et le contrôle de flux. Toutes les clés sont générées à l'exécution.
-- **Contre OpenSSH** (`npm run test:integration`) : `crates/core-ssh/tests/openssh.rs`, tests `#[ignore]`. `scripts/integration.mjs` charge `.env.test` s'il existe puis lance `cargo test --workspace -- --ignored`. La cible est lue dans les variables `YOUNJI_TEST_*` (`ENVIRONNEMENT_DE_TEST.md` §6) ; un test dont la variable manque est ignoré, sauf si `YOUNJI_TEST_REQUIRED=1`.
+- **Sans serveur externe** (`cargo test`) : `crates/core-ssh/tests/local_server.rs` lance un serveur russh en mémoire sur 127.0.0.1 et vérifie le TOFU, le blocage d'une clé modifiée (y compris d'un autre type), l'authentification et le contrôle de flux. Depuis l'étape 3 : keyboard-interactive (questions, mot de passe puis code après succès partiel, remplissage automatique limité, mauvais code, annulation, délai, serveur abusif, réponse sans question en attente), plafond du temps réseau de l'authentification, et déploiement (commande constante, clé reçue sur l'entrée standard, clé déjà présente, échecs, déploiement avec 2FA). Les tests unitaires de `deploy.rs` exécutent aussi le script avec `sh` dans un dossier temporaire (ajout, absence de doublon, permissions) ; ils sont ignorés proprement si `sh` est absent. Toutes les clés sont générées à l'exécution.
+- **Contre OpenSSH** (`npm run test:integration`) : `crates/core-ssh/tests/openssh.rs`, tests `#[ignore]`, dont le déploiement d'une clé générée (ajout, second passage sans doublon, connexion par clé, permissions 700/600, puis retrait de la ligne). `scripts/integration.mjs` charge `.env.test` s'il existe puis lance `cargo test --workspace -- --ignored`. La cible est lue dans les variables `YOUNJI_TEST_*` (`ENVIRONNEMENT_DE_TEST.md` §6) ; un test dont la variable manque est ignoré, sauf si `YOUNJI_TEST_REQUIRED=1`.
 - **Serveur de test** : `tests/docker/sshd/` (Debian 12 épinglée par empreinte, OpenSSH). Aucun secret dans l'image : le mot de passe arrive par un fichier d'environnement, les clés autorisées par un volume en lecture seule, et les clés d'hôte sont régénérées à chaque démarrage.
 
 ### `ci.yml` (Linux, à chaque push et PR)
