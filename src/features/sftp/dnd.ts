@@ -52,3 +52,31 @@ export function readLocalDrag(data: DataTransfer): LocalDrag | null {
   if (!value || typeof value.rootId !== 'number' || !paths) return null;
   return { rootId: value.rootId, paths };
 }
+
+/** Vrai si le glisser-déposer transporte des données internes de Younji. */
+function isInternal(data: DataTransfer | null): boolean {
+  return (
+    data !== null && (data.types.includes(REMOTE_DRAG_TYPE) || data.types.includes(LOCAL_DRAG_TYPE))
+  );
+}
+
+/**
+ * Ignore les fichiers déposés depuis le système (explorateur de fichiers, bureau). Sans cela,
+ * le navigateur tenterait d'ouvrir le fichier déposé (navigation vers `file://`, refusée par
+ * la garde de navigation du cœur). Seul le glisser-déposer interne entre les panneaux est pris
+ * en charge (ADR-034). Renvoie la fonction qui retire la garde.
+ */
+export function installExternalDropGuard(target: Window = window): () => void {
+  const block = (event: DragEvent) => {
+    if (!isInternal(event.dataTransfer)) {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+    }
+  };
+  target.addEventListener('dragover', block);
+  target.addEventListener('drop', block);
+  return () => {
+    target.removeEventListener('dragover', block);
+    target.removeEventListener('drop', block);
+  };
+}

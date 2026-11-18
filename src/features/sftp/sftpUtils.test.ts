@@ -1,6 +1,12 @@
 import { useSftp } from '@/stores/sftp';
 
-import { readLocalDrag, readRemoteDrag, REMOTE_DRAG_TYPE, LOCAL_DRAG_TYPE } from './dnd';
+import {
+  installExternalDropGuard,
+  LOCAL_DRAG_TYPE,
+  readLocalDrag,
+  readRemoteDrag,
+  REMOTE_DRAG_TYPE,
+} from './dnd';
 import {
   formatPermissions,
   formatSize,
@@ -111,6 +117,20 @@ describe('glisser-déposer', () => {
     }
     // Un dépôt d'un autre type (fichier du système, texte) est ignoré.
     expect(readLocalDrag(transfer({ 'text/plain': '/etc/passwd' }))).toBeNull();
+  });
+
+  it('bloque le dépôt de fichiers venant du système, pas le glisser-déposer interne', () => {
+    const remove = installExternalDropGuard(window);
+    const drop = (types: string[]) => {
+      const event = new Event('drop', { cancelable: true }) as DragEvent;
+      Object.defineProperty(event, 'dataTransfer', { value: { types, dropEffect: 'copy' } });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(drop(['Files'])).toBe(true);
+    expect(drop([REMOTE_DRAG_TYPE])).toBe(false);
+    remove();
+    expect(drop(['Files'])).toBe(false);
   });
 });
 
