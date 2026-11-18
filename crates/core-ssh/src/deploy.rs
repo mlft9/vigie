@@ -21,14 +21,20 @@ use tokio::time::timeout;
 use crate::SshError;
 
 /// Script exécuté par `sh` sur le serveur. La ligne de clé est lue sur l'entrée standard.
-/// Les lignes commentées (`# …`) ne comptent pas comme une clé déjà présente.
+///
+/// La clé est « déjà présente » seulement si une ligne **commence** exactement par
+/// `algorithme base64` (suivi de rien ou d'un commentaire). Une ligne commentée, ou une ligne
+/// qui porte des options restrictives (`from=`, `command=`…), ne compte pas : la clé est alors
+/// ajoutée sur sa propre ligne, sans option, pour que la connexion par clé fonctionne. Dans
+/// `case`, `"$k"` entre guillemets est comparé littéralement (aucun motif).
 pub const DEPLOY_SCRIPT: &str = concat!(
     "umask 077; ",
     "d=\"$HOME/.ssh\"; f=\"$d/authorized_keys\"; ",
     "mkdir -p \"$d\" && chmod 700 \"$d\" && touch \"$f\" && chmod 600 \"$f\" || exit 2; ",
     "IFS= read -r k || exit 3; ",
-    "if grep -v \"^[[:space:]]*#\" \"$f\" | grep -qF -- \"$k\"; then echo ",
-    "YOUNJI_PRESENT; exit 0; fi; ",
+    "p=0; while IFS= read -r l || [ -n \"$l\" ]; do ",
+    "case \"$l\" in \"$k\"|\"$k \"*) p=1;; esac; done < \"$f\"; ",
+    "if [ \"$p\" = 1 ]; then echo YOUNJI_PRESENT; exit 0; fi; ",
     "if [ -s \"$f\" ] && [ -n \"$(tail -c 1 \"$f\")\" ]; then echo >> \"$f\" || exit 4; fi; ",
     "printf \"%s\\n\" \"$k\" >> \"$f\" || exit 4; ",
     "echo YOUNJI_ADDED"
@@ -45,6 +51,8 @@ const ADDED: &str = "YOUNJI_ADDED";
 const PRESENT: &str = "YOUNJI_PRESENT";
 /// Sortie standard lue au plus (le script n'écrit qu'un marqueur).
 const MAX_OUTPUT: usize = 1024;
+/// Durée maximale du déploiement une fois authentifié, quoi que fasse le serveur.
+const DEPLOY_TIMEOUT: Duration = Duration::from_secs(60);
 /// Longueur maximale d'une ligne de clé publique (RSA 16384 bits ≈ 2,8 Kio).
 const MAX_LINE_LEN: usize = 16 * 1024;
 /// Algorithmes de clé déployables.
@@ -124,24 +132,44 @@ fn outcome(stdout: &[u8], exit_status: Option<u32>) -> Result<DeployOutcome, Ssh
     }
 }
 
-/// Exécute le déploiement sur une connexion authentifiée. `limit` borne chaque attente réseau.
+/// Exécute le déploiement sur une connexion authentifiée. `limit` borne chaque attente
+/// réseau, [`DEPLOY_TIMEOUT`] l'ensemble : un serveur qui distille sa sortie d'erreur ou
+/// n'ouvre jamais sa fenêtre ne bloque pas le déploiement.
 pub(crate) async fn run<H: client::Handler>(
     handle: &Handle<H>,
     line: &AuthorizedKeyLine,
     limit: Duration,
 ) -> Result<DeployOutcome, SshError> {
-    let failed = |error: russh::Error| {
-        tracing::debug!(%error, "déploiement de la clé : erreur de canal");
-        SshError::ChannelFailed
-    };
-    let mut channel = timeout(limit, handle.channel_open_session())
+    timeout(DEPLOY_TIMEOUT, run_steps(handle, line, limit))
         .await
         .map_err(|_| SshError::Timeout)?
-        .map_err(failed)?;
-    channel.exec(true, deploy_command()).await.map_err(failed)?;
+}
+
+/// Borne une étape du canal par `limit`.
+async fn step<T>(
+    limit: Duration,
+    operation: impl Future<Output = Result<T, russh::Error>>,
+) -> Result<T, SshError> {
+    match timeout(limit, operation).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => {
+            tracing::debug!(%error, "déploiement de la clé : erreur de canal");
+            Err(SshError::ChannelFailed)
+        }
+        Err(_) => Err(SshError::Timeout),
+    }
+}
+
+async fn run_steps<H: client::Handler>(
+    handle: &Handle<H>,
+    line: &AuthorizedKeyLine,
+    limit: Duration,
+) -> Result<DeployOutcome, SshError> {
+    let mut channel = step(limit, handle.channel_open_session()).await?;
+    step(limit, channel.exec(true, deploy_command())).await?;
     let input = format!("{}\n", line.as_str());
-    channel.data(input.as_bytes()).await.map_err(failed)?;
-    channel.eof().await.map_err(failed)?;
+    step(limit, channel.data(input.as_bytes())).await?;
+    step(limit, channel.eof()).await?;
 
     let mut stdout = Vec::new();
     let mut exit_status = None;
@@ -314,6 +342,21 @@ mod tests {
         assert!(ok);
         assert_eq!(out, PRESENT);
         assert_eq!(std::fs::read_to_string(&file).unwrap().lines().count(), 1);
+
+        // Clé présente avec des options restrictives : ne compte pas, elle est ajoutée seule.
+        let restricted = line_of(Algorithm::Ed25519);
+        std::fs::write(
+            &file,
+            format!(
+                "from=\"10.0.0.1\",command=\"true\" {}\n",
+                restricted.as_str()
+            ),
+        )
+        .unwrap();
+        let (out, _) = run_script(home.path(), restricted.as_str()).unwrap();
+        assert_eq!(out, ADDED);
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(content.lines().last(), Some(restricted.as_str()));
 
         // Fichier existant sans fin de ligne, avec la clé en commentaire et une autre clé
         // dont la ligne porte un commentaire : la nouvelle clé arrive sur sa propre ligne.

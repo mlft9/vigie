@@ -70,8 +70,13 @@ pub enum SessionEvent {
     /// l'utilisateur à une demande du serveur.
     Authenticating,
     /// Le serveur pose des questions (keyboard-interactive : code TOTP…) : l'appelant doit
-    /// appeler [`SessionHandle::answer_prompts`].
-    AuthPrompt(AuthPrompt),
+    /// appeler [`SessionHandle::answer_prompts`] avec le même numéro de tour.
+    AuthPrompt {
+        /// Numéro de la demande (1, 2…) : une réponse ne vaut que pour ce tour.
+        round: u32,
+        /// Questions du serveur.
+        prompt: AuthPrompt,
+    },
     /// Déploiement de clé terminé avec succès (le dernier événement suit aussitôt).
     KeyDeployed {
         /// `true` si la clé a été ajoutée, `false` si elle était déjà présente.
@@ -140,6 +145,7 @@ type DecisionSlot = Arc<Mutex<Option<oneshot::Sender<bool>>>>;
 /// Demande keyboard-interactive en attente de réponse : nombre de réponses attendues et
 /// destinataire (`None` = annulation).
 struct PendingPrompt {
+    round: u32,
     expected: usize,
     sender: oneshot::Sender<Option<PromptAnswers>>,
 }
@@ -300,12 +306,21 @@ impl SessionHandle {
         sender.send(accept).map_err(|_| SshError::NoPendingDecision)
     }
 
-    /// Transmet les réponses de l'utilisateur à la demande keyboard-interactive en attente,
-    /// ou l'annule (`None`). Il faut exactement une réponse par question ; sinon la demande
-    /// reste en attente et l'appel échoue.
-    pub fn answer_prompts(&self, answers: Option<PromptAnswers>) -> Result<(), SshError> {
+    /// Transmet les réponses de l'utilisateur à la demande keyboard-interactive `round` en
+    /// attente, ou l'annule (`None`). Une réponse destinée à un autre tour (en retard, en
+    /// double) est refusée ; il faut exactement une réponse par question. Dans ces deux cas,
+    /// la demande reste en attente et l'appel échoue.
+    pub fn answer_prompts(
+        &self,
+        round: u32,
+        answers: Option<PromptAnswers>,
+    ) -> Result<(), SshError> {
         let mut slot = self.prompt.lock().map_err(|_| SshError::NoPendingPrompt)?;
         let pending = slot.take().ok_or(SshError::NoPendingPrompt)?;
+        if pending.round != round {
+            *slot = Some(pending);
+            return Err(SshError::NoPendingPrompt);
+        }
         if let Some(answers) = &answers
             && answers.len() != pending.expected
         {
@@ -358,6 +373,34 @@ impl From<client::AuthResult> for AuthStep {
                 remaining_methods, ..
             } => Self::Failure(remaining_methods.to_vec()),
         }
+    }
+}
+
+/// Temps réseau de l'authentification : chaque échange est borné par `per_call`, et leur
+/// total par `remaining`. Le temps de saisie de l'utilisateur n'y est pas compté : un serveur
+/// ne peut pas faire durer l'authentification indéfiniment (demandes vides en série…).
+struct NetBudget {
+    per_call: Duration,
+    remaining: Duration,
+}
+
+impl NetBudget {
+    fn new(timeouts: &Timeouts) -> Self {
+        Self {
+            per_call: timeouts.auth,
+            remaining: timeouts.auth_total,
+        }
+    }
+
+    async fn run<T>(
+        &mut self,
+        operation: impl Future<Output = Result<T, russh::Error>>,
+    ) -> Result<T, SshError> {
+        let allowed = self.per_call.min(self.remaining);
+        let start = Instant::now();
+        let result = net(allowed, operation).await;
+        self.remaining = self.remaining.saturating_sub(start.elapsed());
+        result
     }
 }
 
@@ -496,8 +539,10 @@ impl SessionTask {
             Credentials::KeyThenPassword(key, password) => (Some(key), Some(password)),
             Credentials::Interactive => (None, None),
         };
-        let limit = timeouts.auth;
-        let first = net(limit, handle.authenticate_none(username.clone())).await?;
+        let mut budget = NetBudget::new(timeouts);
+        let first = budget
+            .run(handle.authenticate_none(username.clone()))
+            .await?;
         let mut remaining = match AuthStep::from(first) {
             AuthStep::Success => return Ok(()),
             AuthStep::Failure(methods) => methods,
@@ -507,21 +552,25 @@ impl SessionTask {
             let step = if remaining.contains(&MethodKind::PublicKey)
                 && let Some(key) = key.take()
             {
-                key_auth(handle, username.clone(), key, limit).await?
+                key_auth(handle, username.clone(), key, &mut budget).await?
             } else if remaining.contains(&MethodKind::Password)
                 && let Some(password) = password.take()
             {
                 // Mot de passe consommé : refusé ici, il ne sera pas resservi plus loin.
-                let result = net(
-                    limit,
-                    handle.authenticate_password(username.clone(), password.expose_secret()),
-                )
-                .await?;
+                let result = budget
+                    .run(handle.authenticate_password(username.clone(), password.expose_secret()))
+                    .await?;
                 AuthStep::from(result)
             } else if remaining.contains(&MethodKind::KeyboardInteractive) && !interactive_tried {
                 interactive_tried = true;
-                self.keyboard_interactive(handle, username.clone(), &mut password, timeouts)
-                    .await?
+                self.keyboard_interactive(
+                    handle,
+                    username.clone(),
+                    &mut password,
+                    &mut budget,
+                    timeouts.auth_prompt,
+                )
+                .await?
             } else {
                 return Err(SshError::AuthFailed);
             };
@@ -540,15 +589,13 @@ impl SessionTask {
         handle: &mut Handle<ClientHandler>,
         username: String,
         password: &mut Option<SecretString>,
-        timeouts: &Timeouts,
+        budget: &mut NetBudget,
+        answer_limit: Duration,
     ) -> Result<AuthStep, SshError> {
-        let limit = timeouts.auth;
-        let mut response = net(
-            limit,
-            handle.authenticate_keyboard_interactive_start(username, None::<String>),
-        )
-        .await?;
-        let mut rounds = 0;
+        let mut response = budget
+            .run(handle.authenticate_keyboard_interactive_start(username, None::<String>))
+            .await?;
+        let mut rounds: u32 = 0;
         loop {
             let (name, instructions, prompts) = match response {
                 KeyboardInteractiveAuthResponse::Success => return Ok(AuthStep::Success),
@@ -562,7 +609,7 @@ impl SessionTask {
                 } => (name, instructions, prompts),
             };
             rounds += 1;
-            if rounds > MAX_PROMPT_ROUNDS {
+            if rounds as usize > MAX_PROMPT_ROUNDS {
                 return Err(SshError::AuthPromptInvalid);
             }
             let prompt = AuthPrompt::from_server(
@@ -578,19 +625,18 @@ impl SessionTask {
                 tracing::debug!("question « mot de passe » : mot de passe enregistré envoyé");
                 PromptAnswers::new(vec![password])?
             } else {
-                self.ask_user(prompt, timeouts.auth_prompt).await?
+                self.ask_user(rounds, prompt, answer_limit).await?
             };
-            response = net(
-                limit,
-                handle.authenticate_keyboard_interactive_respond(answers.to_russh()),
-            )
-            .await?;
+            response = budget
+                .run(handle.authenticate_keyboard_interactive_respond(answers.to_russh()))
+                .await?;
         }
     }
 
     /// Pose les questions du serveur à l'utilisateur et attend ses réponses.
     async fn ask_user(
         &self,
+        round: u32,
         prompt: AuthPrompt,
         limit: Duration,
     ) -> Result<PromptAnswers, SshError> {
@@ -598,6 +644,7 @@ impl SessionTask {
         match self.prompt.lock() {
             Ok(mut slot) => {
                 *slot = Some(PendingPrompt {
+                    round,
                     expected: prompt.fields.len(),
                     sender,
                 });
@@ -605,7 +652,7 @@ impl SessionTask {
             Err(_) => return Err(SshError::AuthFailed),
         }
         tracing::debug!(questions = prompt.fields.len(), "questions du serveur");
-        self.sink.event(SessionEvent::AuthPrompt(prompt));
+        self.sink.event(SessionEvent::AuthPrompt { round, prompt });
         let answers = match timeout(limit, receiver).await {
             Ok(Ok(Some(answers))) => answers,
             Ok(Ok(None) | Err(_)) => return Err(SshError::AuthCancelled),
@@ -732,15 +779,18 @@ async fn key_auth(
     handle: &mut Handle<ClientHandler>,
     username: String,
     key: Arc<PrivateKey>,
-    limit: Duration,
+    budget: &mut NetBudget,
 ) -> Result<AuthStep, SshError> {
     // Signature RSA toujours en SHA-2, même si le serveur n'annonce rien : jamais SHA-1.
-    let hash = net(limit, handle.best_supported_rsa_hash())
+    let hash = budget
+        .run(handle.best_supported_rsa_hash())
         .await?
         .flatten()
         .or(Some(HashAlg::Sha512));
     let key = PrivateKeyWithHashAlg::new(key, hash);
-    let result = net(limit, handle.authenticate_publickey(username, key)).await?;
+    let result = budget
+        .run(handle.authenticate_publickey(username, key))
+        .await?;
     Ok(AuthStep::from(result))
 }
 

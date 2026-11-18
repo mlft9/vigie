@@ -13,6 +13,7 @@ vi.mock('@/lib/ipc', async (importOriginal) => {
 });
 
 const PAM: AuthPromptInfo = {
+  round: 1,
   name: '',
   instructions: '',
   prompts: [{ text: 'Verification code: ', echo: false }],
@@ -39,6 +40,7 @@ describe('questions du serveur (AUTH-03)', () => {
       <AuthPromptDialog
         address="srv.lab:2222"
         prompt={{
+          round: 1,
           name: '<b>PAM</b>',
           instructions: 'Ligne 1\nLigne 2 <img src=x onerror=alert(1)>',
           prompts: [
@@ -57,6 +59,31 @@ describe('questions du serveur (AUTH-03)', () => {
     // Écho autorisé par le serveur : champ texte ; question vide : libellé de repli.
     expect(screen.getByLabelText('Utilisateur :')).toHaveAttribute('type', 'text');
     expect(screen.getByLabelText('Réponse 2')).toHaveAttribute('type', 'password');
+  });
+
+  it('refuse localement une réponse de plus de 1024 octets UTF-8', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<AuthPromptDialog address="srv" prompt={PAM} onSubmit={onSubmit} onCancel={vi.fn()} />);
+    // 600 caractères, mais 1200 octets en UTF-8.
+    await user.click(screen.getByLabelText('Verification code:'));
+    await user.paste('é'.repeat(600));
+    await user.click(screen.getByRole('button', { name: 'Valider' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('affiche le refus des réponses précédentes', () => {
+    render(
+      <AuthPromptDialog
+        address="srv"
+        prompt={PAM}
+        errorCode="ssh.invalid_answers"
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/Réponses invalides/);
   });
 
   it('rappelle que Younji ne demande jamais le mot de passe maître ici', () => {

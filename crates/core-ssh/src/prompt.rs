@@ -87,6 +87,23 @@ fn is_password_text(text: &str) -> bool {
     normalized == "password" || normalized == "mot de passe"
 }
 
+/// Caractères invisibles ou de mise en forme (catégories Unicode Cf, Zl, Zp, liste explicite)
+/// qui peuvent masquer, inverser ou mettre en page du texte pour imiter l'interface.
+fn is_invisible(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00AD}'
+            | '\u{061C}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{2028}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
+            | '\u{E0000}'..='\u{E007F}'
+    )
+}
+
 /// Retire les caractères de contrôle (échappements ANSI, OSC…) et borne la longueur en
 /// octets, sans couper un caractère. `multiline` conserve les retours à la ligne.
 fn clean(text: &str, max: usize, multiline: bool) -> String {
@@ -95,9 +112,7 @@ fn clean(text: &str, max: usize, multiline: bool) -> String {
         let keep = match c {
             '\n' if multiline => Some('\n'),
             '\t' => Some(' '),
-            c if c.is_control() => None,
-            // Caractères invisibles de mise en forme qui peuvent masquer ou inverser du texte.
-            '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' => None,
+            c if c.is_control() || is_invisible(c) => None,
             c => Some(c),
         };
         if let Some(c) = keep {
@@ -166,7 +181,10 @@ mod tests {
         let p = AuthPrompt::from_server(
             "nom\x1b[31m",
             "ligne 1\r\nligne\t2\x1b]52;c;ZXZpbA==\x07",
-            [("Code\u{202E} :\x08".to_owned(), false)],
+            [(
+                "Co\u{00AD}de\u{202E} \u{2028}\u{FEFF}\u{E0041}:\x08".to_owned(),
+                false,
+            )],
         )
         .unwrap();
         assert_eq!(p.name, "nom[31m");

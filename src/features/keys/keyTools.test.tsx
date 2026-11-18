@@ -144,13 +144,14 @@ describe('déploiement de clé (KEY-03)', () => {
     emit({ type: 'authenticating' });
     emit({
       type: 'authPrompt',
+      round: 1,
       name: '',
       instructions: '',
       prompts: [{ text: 'Verification code: ', echo: false }],
     });
     await user.type(screen.getByLabelText('Verification code:'), '123456');
     await user.click(screen.getByRole('button', { name: 'Valider' }));
-    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(42, ['123456']);
+    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(42, 1, ['123456']);
 
     emit({ type: 'keyDeployed', added: true });
     emit({ type: 'disconnected', code: 'ssh.session_ended' });

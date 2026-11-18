@@ -307,15 +307,21 @@ export class TerminalSession {
 
   /**
    * Réponses aux questions du serveur (`null` : annulation). Les réponses ne sont pas
-   * conservées : l'appelant vide ses champs dès l'appel.
+   * conservées : l'appelant vide ses champs dès l'appel. Si le cœur les refuse (longueur,
+   * nombre), la question est réaffichée avec la cause : elle est toujours en attente.
    */
   async answerPrompt(answers: string[] | null): Promise<void> {
-    if (this.sessionId === null) return;
-    this.update({ pendingPrompt: null, status: 'authenticating' });
+    const prompt = useSessions.getState().tabs.find((t) => t.id === this.tabId)?.pendingPrompt;
+    if (this.sessionId === null || !prompt) return;
+    this.update({ pendingPrompt: null, status: 'authenticating', errorCode: null });
     try {
-      await sshAuthAnswer(this.sessionId, answers);
-    } catch {
-      // La session s'est terminée entre-temps : l'événement de fin met l'onglet à jour.
+      await sshAuthAnswer(this.sessionId, prompt.round, answers);
+    } catch (error) {
+      const code = toAppError(error).code;
+      if (code === 'ssh.invalid_answers') {
+        this.update({ pendingPrompt: prompt, status: 'authPrompt', errorCode: code });
+      }
+      // Sinon, la session s'est terminée entre-temps : l'événement de fin met l'onglet à jour.
     }
   }
 
@@ -340,7 +346,9 @@ export class TerminalSession {
       case 'authPrompt':
         this.update({
           status: 'authPrompt',
+          errorCode: null,
           pendingPrompt: {
+            round: event.round,
             name: event.name,
             instructions: event.instructions,
             prompts: event.prompts,

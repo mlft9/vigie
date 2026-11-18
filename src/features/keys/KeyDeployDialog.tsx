@@ -23,7 +23,7 @@ type Phase =
   | { kind: 'choose' }
   | { kind: 'running' }
   | { kind: 'hostKey'; key: HostKeyInfo }
-  | { kind: 'prompt'; prompt: AuthPromptInfo }
+  | { kind: 'prompt'; prompt: AuthPromptInfo; errorCode: string | null }
   | { kind: 'blocked' }
   | { kind: 'done'; added: boolean };
 
@@ -80,7 +80,13 @@ export function KeyDeployDialog({
       case 'authPrompt':
         setPhase({
           kind: 'prompt',
-          prompt: { name: event.name, instructions: event.instructions, prompts: event.prompts },
+          prompt: {
+            round: event.round,
+            name: event.name,
+            instructions: event.instructions,
+            prompts: event.prompts,
+          },
+          errorCode: null,
         });
         break;
       case 'authenticating':
@@ -127,11 +133,16 @@ export function KeyDeployDialog({
     }
   }
 
-  function answer(answers: string[] | null) {
+  function answer(prompt: AuthPromptInfo, answers: string[] | null) {
     setPhase({ kind: 'running' });
-    if (session.current !== null) {
-      void sshAuthAnswer(session.current, answers).catch(() => undefined);
-    }
+    if (session.current === null) return;
+    sshAuthAnswer(session.current, prompt.round, answers).catch((failure: unknown) => {
+      const code = toAppError(failure).code;
+      // Réponses refusées par le cœur : la question est toujours en attente, on la réaffiche.
+      if (code === 'ssh.invalid_answers' && session.current !== null) {
+        setPhase({ kind: 'prompt', prompt, errorCode: code });
+      }
+    });
   }
 
   function cancel() {
@@ -157,9 +168,12 @@ export function KeyDeployDialog({
         key={JSON.stringify(phase.prompt)}
         address={address}
         prompt={phase.prompt}
-        onSubmit={answer}
+        errorCode={phase.errorCode}
+        onSubmit={(answers) => {
+          answer(phase.prompt, answers);
+        }}
         onCancel={() => {
-          answer(null);
+          answer(phase.prompt, null);
         }}
       />
     );

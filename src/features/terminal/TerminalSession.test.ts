@@ -163,6 +163,7 @@ describe('TerminalSession', () => {
     const { session, emit, tab } = await connected();
     emit({ type: 'authenticating' });
     const prompt = {
+      round: 1,
       name: '',
       instructions: '',
       prompts: [{ text: 'Verification code: ', echo: false }],
@@ -171,7 +172,7 @@ describe('TerminalSession', () => {
     expect(tab()).toMatchObject({ status: 'authPrompt', pendingPrompt: prompt });
 
     await session.answerPrompt(['123456']);
-    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(7, ['123456']);
+    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(7, 1, ['123456']);
     expect(tab()).toMatchObject({ status: 'authenticating', pendingPrompt: null });
     expect(JSON.stringify(useSessions.getState())).not.toContain('123456');
     emit({ type: 'authenticating' });
@@ -183,17 +184,36 @@ describe('TerminalSession', () => {
     const { session, emit, tab } = await connected();
     emit({
       type: 'authPrompt',
+      round: 4,
       name: '',
       instructions: '',
       prompts: [{ text: 'Code', echo: true }],
     });
     await session.answerPrompt(null);
-    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(7, null);
+    expect(ipc.sshAuthAnswer).toHaveBeenCalledWith(7, 4, null);
     emit({ type: 'disconnected', code: 'ssh.auth_cancelled' });
     expect(tab()).toMatchObject({
       status: 'form',
       errorCode: 'ssh.auth_cancelled',
       pendingPrompt: null,
+    });
+  });
+
+  it('réaffiche la question si le cœur refuse les réponses', async () => {
+    const { session, emit, tab } = await connected();
+    const prompt = {
+      round: 2,
+      name: '',
+      instructions: '',
+      prompts: [{ text: 'Code', echo: false }],
+    };
+    emit({ type: 'authPrompt', ...prompt });
+    vi.mocked(ipc.sshAuthAnswer).mockRejectedValueOnce({ code: 'ssh.invalid_answers' });
+    await session.answerPrompt(['x'.repeat(2000)]);
+    expect(tab()).toMatchObject({
+      status: 'authPrompt',
+      pendingPrompt: prompt,
+      errorCode: 'ssh.invalid_answers',
     });
   });
 

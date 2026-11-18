@@ -115,8 +115,12 @@ export function sshAck(sessionId: SessionId, bytes: number): Promise<void> {
  * Répond aux questions du serveur (keyboard-interactive), ou annule (`null`). Les réponses
  * (codes TOTP…) ne sont transmises qu'ici, une fois ; elles ne reviennent jamais du cœur.
  */
-export function sshAuthAnswer(sessionId: SessionId, answers: string[] | null): Promise<void> {
-  return call<undefined>('ssh_auth_answer', { sessionId, answers });
+export function sshAuthAnswer(
+  sessionId: SessionId,
+  round: number,
+  answers: string[] | null,
+): Promise<void> {
+  return call<undefined>('ssh_auth_answer', { sessionId, round, answers });
 }
 
 /** Accepte ou refuse une clé d'hôte inconnue. */

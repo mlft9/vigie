@@ -53,6 +53,8 @@ export interface PromptField {
 
 /** Demande du serveur : un tour de questions (code TOTP, mot de passe PAM…). */
 export interface AuthPromptInfo {
+  /** Numéro de la demande, renvoyé avec les réponses (une réponse ne vaut que pour ce tour). */
+  round: number;
   name: string;
   instructions: string;
   prompts: PromptField[];

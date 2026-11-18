@@ -364,6 +364,8 @@ struct Client {
     handle: SessionHandle,
     rx: mpsc::UnboundedReceiver<Received>,
     output: Vec<u8>,
+    /// Numéro de la dernière demande keyboard-interactive reçue.
+    round: u32,
 }
 
 fn test_timeouts() -> Timeouts {
@@ -392,6 +394,7 @@ impl Client {
             handle: SessionHandle::spawn(params, Arc::new(ChannelSink(tx))),
             rx,
             output: Vec::new(),
+            round: 0,
         }
     }
 
@@ -408,6 +411,7 @@ impl Client {
             handle: SessionHandle::spawn_deploy(params, Arc::new(ChannelSink(tx))),
             rx,
             output: Vec::new(),
+            round: 0,
         }
     }
 
@@ -807,14 +811,23 @@ fn answers(values: &[&str]) -> Option<PromptAnswers> {
 }
 
 impl Client {
+    /// Répond à la dernière demande reçue.
+    fn answer(&self, values: Option<PromptAnswers>) -> Result<(), SshError> {
+        self.handle.answer_prompts(self.round, values)
+    }
+
     /// Attend la prochaine demande du serveur et renvoie le texte de ses questions.
     async fn expect_prompt(&mut self) -> Vec<(String, bool)> {
         match self.next_event().await {
-            SessionEvent::AuthPrompt(prompt) => prompt
-                .fields
-                .into_iter()
-                .map(|f| (f.text, f.echo))
-                .collect(),
+            SessionEvent::AuthPrompt { round, prompt } => {
+                assert!(round > self.round, "tours numérotés dans l'ordre");
+                self.round = round;
+                prompt
+                    .fields
+                    .into_iter()
+                    .map(|f| (f.text, f.echo))
+                    .collect()
+            }
             other => panic!("attendu AuthPrompt, reçu {other:?}"),
         }
     }
@@ -833,19 +846,26 @@ async fn keyboard_interactive_questions_are_asked_and_answered() {
         client.expect_prompt().await,
         vec![("Verification code: ".to_owned(), false)]
     );
+    // Réponse destinée à un autre tour : refusée, la question reste en attente.
+    assert_eq!(
+        client
+            .handle
+            .answer_prompts(client.round + 1, answers(&[CODE])),
+        Err(SshError::NoPendingPrompt)
+    );
     // Mauvais nombre de réponses : refusé, la question reste en attente.
     assert_eq!(
-        client.handle.answer_prompts(answers(&[CODE, "en trop"])),
+        client.answer(answers(&[CODE, "en trop"])),
         Err(SshError::InvalidAnswers)
     );
-    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    client.answer(answers(&[CODE])).unwrap();
     assert_eq!(client.next_event().await, SessionEvent::Authenticating);
     assert_eq!(client.next_event().await, SessionEvent::Connected);
     client.wait_output("pret").await;
     assert_eq!(*fixture.answers.lock().unwrap(), vec![CODE.to_owned()]);
     // Plus rien n'est attendu.
     assert_eq!(
-        client.handle.answer_prompts(answers(&[CODE])),
+        client.answer(answers(&[CODE])),
         Err(SshError::NoPendingPrompt)
     );
 }
@@ -867,7 +887,7 @@ async fn stored_password_answers_the_pam_password_question_only() {
         client.expect_prompt().await,
         vec![("Verification code: ".to_owned(), false)]
     );
-    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    client.answer(answers(&[CODE])).unwrap();
     assert_eq!(client.next_event().await, SessionEvent::Authenticating);
     assert_eq!(client.next_event().await, SessionEvent::Connected);
     assert_eq!(
@@ -892,13 +912,13 @@ async fn without_stored_password_every_question_goes_to_the_user() {
         client.expect_prompt().await,
         vec![("Password: ".to_owned(), false)]
     );
-    client.handle.answer_prompts(answers(&[PASSWORD])).unwrap();
+    client.answer(answers(&[PASSWORD])).unwrap();
     assert_eq!(client.next_event().await, SessionEvent::Authenticating);
     assert_eq!(
         client.expect_prompt().await,
         vec![("Verification code: ".to_owned(), false)]
     );
-    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    client.answer(answers(&[CODE])).unwrap();
     assert_eq!(client.next_event().await, SessionEvent::Authenticating);
     assert_eq!(client.next_event().await, SessionEvent::Connected);
 }
@@ -918,7 +938,7 @@ async fn password_then_code_after_partial_success() {
         client.expect_prompt().await,
         vec![("Verification code: ".to_owned(), false)]
     );
-    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    client.answer(answers(&[CODE])).unwrap();
     assert_eq!(client.next_event().await, SessionEvent::Authenticating);
     assert_eq!(client.next_event().await, SessionEvent::Connected);
     // Le mot de passe, déjà accepté par la méthode `password`, n'est pas renvoyé.
@@ -935,7 +955,7 @@ async fn wrong_code_is_refused() {
     let mut client = Client::connect(&fixture, Credentials::Interactive);
     client.accept_and_connect_until_auth().await;
     client.expect_prompt().await;
-    client.handle.answer_prompts(answers(&["000000"])).unwrap();
+    client.answer(answers(&["000000"])).unwrap();
     assert_eq!(client.next_event().await, SessionEvent::Authenticating);
     assert_eq!(
         client.next_event().await,
@@ -953,13 +973,13 @@ async fn cancelling_the_questions_aborts() {
     let mut client = Client::connect(&fixture, Credentials::Interactive);
     client.accept_and_connect_until_auth().await;
     client.expect_prompt().await;
-    client.handle.answer_prompts(None).unwrap();
+    client.answer(None).unwrap();
     assert_eq!(
         client.next_event().await,
         disconnected(SshError::AuthCancelled)
     );
     assert_eq!(
-        client.handle.answer_prompts(answers(&[CODE])),
+        client.answer(answers(&[CODE])),
         Err(SshError::NoPendingPrompt)
     );
 }
@@ -983,7 +1003,7 @@ async fn unanswered_questions_time_out() {
         disconnected(SshError::AuthPromptTimeout)
     );
     assert_eq!(
-        client.handle.answer_prompts(answers(&[CODE])),
+        client.answer(answers(&[CODE])),
         Err(SshError::NoPendingPrompt)
     );
 }
@@ -1012,7 +1032,7 @@ async fn answers_are_refused_when_nothing_is_asked() {
     let mut client = Client::connect(&fixture, password(PASSWORD));
     client.accept_and_connect().await;
     assert_eq!(
-        client.handle.answer_prompts(answers(&["x"])),
+        client.answer(answers(&["x"])),
         Err(SshError::NoPendingPrompt)
     );
 }
@@ -1096,10 +1116,24 @@ async fn deploy_goes_through_two_factor_authentication() {
     let mut client = Client::deploy(&fixture, Credentials::Interactive, new_key_line());
     client.accept_and_connect_until_auth().await;
     client.expect_prompt().await;
-    client.handle.answer_prompts(answers(&[CODE])).unwrap();
+    client.answer(answers(&[CODE])).unwrap();
     assert_eq!(client.next_event().await, SessionEvent::Authenticating);
     assert_eq!(
         client.next_event().await,
         SessionEvent::KeyDeployed { added: true }
     );
+}
+
+#[tokio::test]
+async fn authentication_network_time_is_capped_overall() {
+    // Budget réseau total épuisé : l'authentification s'arrête, même sans question posée.
+    let fixture = start_server(None).await;
+    let timeouts = Timeouts {
+        auth_total: Duration::ZERO,
+        ..test_timeouts()
+    };
+    let mut client = Client::connect_with(&fixture, password(PASSWORD), timeouts);
+    client.accept_and_connect_until_auth().await;
+    assert_eq!(client.next_event().await, disconnected(SshError::Timeout));
+    assert_eq!(fixture.auth_attempts.load(Ordering::SeqCst), 0);
 }

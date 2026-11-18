@@ -110,6 +110,7 @@ export function SessionPanel({ tab, active }: { tab: SessionTab; active: boolean
           key={JSON.stringify(tab.pendingPrompt)}
           address={target.port === 22 ? target.host : `${target.host}:${target.port}`}
           prompt={tab.pendingPrompt}
+          errorCode={tab.errorCode}
           onSubmit={(answers) => void terminalSession(tab.id).answerPrompt(answers)}
           onCancel={() => void terminalSession(tab.id).answerPrompt(null)}
         />

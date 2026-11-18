@@ -106,6 +106,8 @@ pub enum SessionEventDto {
     Authenticating,
     /// Questions du serveur (keyboard-interactive) : réponses par `ssh_auth_answer`.
     AuthPrompt {
+        /// Numéro de la demande, à renvoyer avec les réponses.
+        round: u32,
         name: String,
         instructions: String,
         prompts: Vec<PromptFieldDto>,
@@ -128,11 +130,16 @@ impl SessionEventDto {
                 host_pattern: host_pattern.to_owned(),
             },
             SessionEvent::Authenticating => Self::Authenticating,
-            SessionEvent::AuthPrompt(AuthPrompt {
-                name,
-                instructions,
-                fields,
-            }) => Self::AuthPrompt {
+            SessionEvent::AuthPrompt {
+                round,
+                prompt:
+                    AuthPrompt {
+                        name,
+                        instructions,
+                        fields,
+                    },
+            } => Self::AuthPrompt {
+                round,
                 name,
                 instructions,
                 prompts: fields
@@ -370,13 +377,14 @@ pub fn ssh_connect_host(
 #[tauri::command]
 pub fn ssh_auth_answer(
     session_id: SessionId,
+    round: u32,
     answers: Option<Vec<SecretString>>,
     state: State<'_, SessionManager>,
 ) -> Result<(), AppError> {
     let answers = answers.map(PromptAnswers::new).transpose()?;
     state
         .session(session_id)?
-        .answer_prompts(answers)
+        .answer_prompts(round, answers)
         .map_err(Into::into)
 }
 
@@ -717,11 +725,12 @@ mod tests {
             [("Verification code: ".to_owned(), false)],
         )
         .unwrap();
-        let event = SessionEventDto::from_event(SessionEvent::AuthPrompt(prompt), "");
+        let event = SessionEventDto::from_event(SessionEvent::AuthPrompt { round: 2, prompt }, "");
         assert_eq!(
             serde_json::to_value(event).unwrap(),
             serde_json::json!({
                 "type": "authPrompt",
+                "round": 2,
                 "name": "PAM",
                 "instructions": "Saisir le code",
                 "prompts": [{ "text": "Verification code: ", "echo": false }]

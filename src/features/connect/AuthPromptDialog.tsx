@@ -7,10 +7,17 @@ import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import type { AuthPromptInfo } from '@/lib/types';
 
+import { ErrorMessage } from './ErrorMessage';
+
+/** Longueur maximale d'une réponse, en octets UTF-8 (même limite que le cœur). */
+const MAX_ANSWER_BYTES = 1024;
+
 interface AuthPromptDialogProps {
   /** Adresse affichée (`hôte` ou `hôte:port`) : rappelle qui pose les questions. */
   address: string;
   prompt: AuthPromptInfo;
+  /** Refus des réponses précédentes par le cœur (la question est toujours en attente). */
+  errorCode?: string | null;
   onSubmit: (answers: string[]) => void;
   onCancel: () => void;
 }
@@ -21,13 +28,26 @@ interface AuthPromptDialogProps {
  * texte brut, dans un encadré qui le distingue de l'interface de Younji, avec un rappel contre
  * l'hameçonnage. Les réponses restent dans l'état local et sont vidées dès l'envoi.
  */
-export function AuthPromptDialog({ address, prompt, onSubmit, onCancel }: AuthPromptDialogProps) {
+export function AuthPromptDialog({
+  address,
+  prompt,
+  errorCode = null,
+  onSubmit,
+  onCancel,
+}: AuthPromptDialogProps) {
   const { t } = useTranslation();
   const id = useId();
   const [answers, setAnswers] = useState<string[]>(() => prompt.prompts.map(() => ''));
+  const [localError, setLocalError] = useState<string | null>(null);
 
   function submit(event: SyntheticEvent) {
     event.preventDefault();
+    const encoder = new TextEncoder();
+    if (answers.some((answer) => encoder.encode(answer).length > MAX_ANSWER_BYTES)) {
+      setLocalError('ssh.invalid_answers');
+      return;
+    }
+    setLocalError(null);
     const sent = [...answers];
     setAnswers(prompt.prompts.map(() => ''));
     onSubmit(sent);
@@ -45,6 +65,8 @@ export function AuthPromptDialog({ address, prompt, onSubmit, onCancel }: AuthPr
         <p id={`${id}-description`} className="text-sm">
           {t('authPrompt.intro', { host: address })}
         </p>
+
+        {(localError ?? errorCode) && <ErrorMessage code={localError ?? errorCode ?? ''} />}
 
         {hasServerText && (
           <figure className="flex flex-col gap-1 rounded-md border bg-muted/40 p-3 text-sm">

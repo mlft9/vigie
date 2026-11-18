@@ -472,16 +472,59 @@ pub async fn key_export_public(
     let Some(picked) = receiver.await.map_err(|_| AppError::DIALOG_FAILED)? else {
         return Ok(false);
     };
-    let path = picked.into_path().map_err(|_| AppError::DIALOG_FAILED)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        std::fs::write(&path, format!("{public_key}\n")).map_err(|error| {
-            tracing::debug!(%error, "écriture de la clé publique impossible");
-            AppError::EXPORT_FAILED
-        })
-    })
-    .await
-    .map_err(|_| AppError::INTERNAL)??;
+    let chosen = picked.into_path().map_err(|_| AppError::DIALOG_FAILED)?;
+    let path = with_pub_extension(chosen.clone());
+    // Écraser n'est permis que pour le fichier confirmé dans la boîte de dialogue : si
+    // l'extension a été ajoutée, le fichier visé n'a pas été confirmé.
+    let overwrite = path == chosen;
+    tauri::async_runtime::spawn_blocking(move || write_atomically(&path, &public_key, overwrite))
+        .await
+        .map_err(|_| AppError::INTERNAL)??;
     Ok(true)
+}
+
+/// Impose l'extension `.pub` : sous Linux, le filtre de la boîte de dialogue ne l'ajoute pas,
+/// et un nom tapé sans extension (`id_ed25519`) écraserait sinon la clé **privée** voisine.
+fn with_pub_extension(path: std::path::PathBuf) -> std::path::PathBuf {
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pub"))
+    {
+        path
+    } else {
+        let mut name = path.file_name().unwrap_or_default().to_os_string();
+        name.push(".pub");
+        path.with_file_name(name)
+    }
+}
+
+/// Écrit la clé publique par fichier temporaire du même dossier puis renommage : une écriture
+/// interrompue ne laisse jamais un fichier tronqué.
+fn write_atomically(
+    path: &std::path::Path,
+    public_key: &str,
+    overwrite: bool,
+) -> Result<(), AppError> {
+    use std::io::Write;
+    let failed = |error: std::io::Error| {
+        tracing::debug!(%error, "écriture de la clé publique impossible");
+        AppError::EXPORT_FAILED
+    };
+    let dir = path
+        .parent()
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .ok_or(AppError::EXPORT_FAILED)?;
+    let mut file = tempfile::NamedTempFile::new_in(dir).map_err(failed)?;
+    file.write_all(format!("{public_key}\n").as_bytes())
+        .map_err(failed)?;
+    file.as_file().sync_all().map_err(failed)?;
+    if overwrite {
+        file.persist(path).map_err(|error| failed(error.error))?;
+    } else {
+        file.persist_noclobber(path)
+            .map_err(|error| failed(error.error))?;
+    }
+    Ok(())
 }
 
 /// Renomme une clé.
@@ -636,6 +679,43 @@ mod tests {
         assert_eq!(public_key_file_name(""), "younji_key.pub");
         assert_eq!(public_key_file_name("..."), "younji_key.pub");
         assert!(public_key_file_name(&"a".repeat(500)).len() <= 68);
+    }
+
+    #[test]
+    fn exported_file_always_ends_in_pub_and_is_written_whole() {
+        use std::path::PathBuf;
+        assert_eq!(
+            with_pub_extension(PathBuf::from("/h/.ssh/id_ed25519")),
+            PathBuf::from("/h/.ssh/id_ed25519.pub")
+        );
+        assert_eq!(
+            with_pub_extension(PathBuf::from("/h/cle.PUB")),
+            PathBuf::from("/h/cle.PUB")
+        );
+        assert_eq!(
+            with_pub_extension(PathBuf::from("/h/cle.txt")),
+            PathBuf::from("/h/cle.txt.pub")
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cle.pub");
+        std::fs::write(&path, "ancien contenu plus long que la clé").unwrap();
+        write_atomically(&path, "ssh-ed25519 AAAA", true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "ssh-ed25519 AAAA\n"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        // Fichier non confirmé par l'utilisateur : jamais écrasé.
+        assert_eq!(
+            write_atomically(&path, "ssh-ed25519 BBBB", false),
+            Err(AppError::EXPORT_FAILED)
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "ssh-ed25519 AAAA\n"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]
